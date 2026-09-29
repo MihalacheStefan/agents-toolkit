@@ -362,9 +362,6 @@ mod tests {
                 "~/go/pkg/mod",
             ]
         );
-        assert_eq!(
-            record.catalog_sources,
-            vec!["~/projects/agent-skills", "~/praetor/agent-skills"]
-        );
+        assert_eq!(record.catalog_sources, vec!["~/projects/agent-skills", "~/praetor/agent-skills"]);
     }
 }

@@ -618,9 +618,15 @@ mod tests {
     #[test]
     fn does_not_abbreviate_a_sibling_that_merely_shares_the_home_prefix() {
         let home = "/Users/stefanmihalache";
-        assert_eq!(abbreviate_home_paths("/Users/stefanmihalache-old/app".to_owned(), home), "/Users/stefanmihalache-old/app");
+        assert_eq!(
+            abbreviate_home_paths("/Users/stefanmihalache-old/app".to_owned(), home),
+            "/Users/stefanmihalache-old/app"
+        );
         assert_eq!(abbreviate_home_paths("/Users/stefanmihalache.bak".to_owned(), home), "/Users/stefanmihalache.bak");
-        assert_eq!(abbreviate_home_paths("/Users/stefanmihalache_backup".to_owned(), home), "/Users/stefanmihalache_backup");
+        assert_eq!(
+            abbreviate_home_paths("/Users/stefanmihalache_backup".to_owned(), home),
+            "/Users/stefanmihalache_backup"
+        );
     }
 
     #[test]
