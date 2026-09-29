@@ -33,7 +33,7 @@ pub(crate) const BROAD_SCAN_CACHE_PATHS: &[&str] = &[
 
 /// Home paths holding source catalogs that a broad scan excludes unless explicitly requested.
 pub(crate) const CATALOG_SOURCE_HOME_PATHS: &[&str] =
-    &["projects/agent-skills", "sablier/agent-skills", "sablier/sablier-skills"];
+    &["projects/agent-skills", "praetor/agent-skills"];
 
 pub(crate) const CLAUDE_AGENT_STATE_DIRECTORIES: &[&str] = &[
     "backups",

@@ -364,7 +364,7 @@ mod tests {
         );
         assert_eq!(
             record.catalog_sources,
-            vec!["~/projects/agent-skills", "~/sablier/agent-skills", "~/sablier/sablier-skills"]
+            vec!["~/projects/agent-skills", "~/praetor/agent-skills"]
         );
     }
 }
