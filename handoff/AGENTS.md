@@ -32,7 +32,7 @@ completed handoffs without changing the rest of a document.
 Requires Git, Cargo, and the rolling Rust nightly toolchain:
 
 ```sh
-cargo install --git https://github.com/MihalacheStefan/agent-toolkit ai-handoff --locked --root "$HOME/.local"
+cargo install --git https://github.com/MihalacheStefan/agents-toolkit ai-handoff --locked --root "$HOME/.local"
 ```
 
 For local development, install the current checkout instead:

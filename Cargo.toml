@@ -6,7 +6,7 @@ resolver = "3"
 authors = [Mihalache Stefan"]
 edition = "2026"
 license = "MIT"
-repository = "https://github.com/MihalacheStefan/agent-toolkit"
+repository = "https://github.com/MihalacheStefan/agents-toolkit"
 version = "1.0.0"
 
 [workspace.dependencies]

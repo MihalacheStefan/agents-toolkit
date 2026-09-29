@@ -42,7 +42,7 @@ describe("path display", () => {
 
   test.each([
     ["/Users/testuser", "~"],
-    ["/Users/testuser/projects/agent-toolkit", "~/projects/agent-toolkit"],
+    ["/Users/testuser/projects/agents-toolkit", "~/projects/agents-toolkit"],
     ["/Users/testuser-work/project", "/Users/testuser-work/project"],
     ["/tmp/project", "/tmp/project"],
   ])("replaces the home directory in %s", (value, expected) => {
@@ -71,8 +71,8 @@ describe("path display", () => {
 
   test("shortens display paths after replacing the home directory", () => {
     expect(shortenPath("/Users/testuser", HOME)).toBe("~");
-    expect(shortenPath("/Users/testuser/projects/agent-toolkit", HOME)).toBe(
-      "~/projects/agent-toolkit",
+    expect(shortenPath("/Users/testuser/projects/agents-toolkit", HOME)).toBe(
+      "~/projects/agents-toolkit",
     );
   });
 });

@@ -28,8 +28,8 @@ describe("findings", () => {
     const groups = groupFindings(sampleSnapshot.findings);
 
     expect(groups.map(({ repoRoot }) => repoRoot)).toEqual([
-      "/Users/prb/projects/agent-toolkit",
-      "/Users/prb/projects/agent-skills",
+      "/Users/stefanmihalache/projects/agents-toolkit",
+      "/Users/stefanmihalache/projects/agents-skills",
     ]);
     expect(groups[0]?.counts).toEqual({
       pending: 1,

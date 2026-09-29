@@ -257,8 +257,8 @@ fn abbreviate_home_paths(contents: String, home: &str) -> String {
             result.push('~');
             rest = after_home;
         } else {
-            // `home` is a prefix of a sibling path component (e.g. home `/Users/prb` inside
-            // `/Users/prb-old`); keep it verbatim and resume scanning just past this character so
+            // `home` is a prefix of a sibling path component (e.g. home `/Users/stefanmihalache` inside
+            // `/Users/stefanmihalache-old`); keep it verbatim and resume scanning just past this character so
             // later, independent occurrences of `home` are still abbreviated.
             let mut chars = from_match.chars();
             result.push(chars.next().expect("home is non-empty"));
@@ -606,26 +606,26 @@ mod tests {
 
     #[test]
     fn abbreviates_home_at_path_boundaries() {
-        let home = "/Users/prb";
-        assert_eq!(abbreviate_home_paths("/Users/prb/projects/repo".to_owned(), home), "~/projects/repo");
-        assert_eq!(abbreviate_home_paths("/Users/prb".to_owned(), home), "~");
+        let home = "/Users/stefanmihalache";
+        assert_eq!(abbreviate_home_paths("/Users/stefanmihalache/projects/repo".to_owned(), home), "~/projects/repo");
+        assert_eq!(abbreviate_home_paths("/Users/stefanmihalache".to_owned(), home), "~");
         assert_eq!(
-            abbreviate_home_paths("cd /Users/prb/one && cd /Users/prb/two".to_owned(), home),
+            abbreviate_home_paths("cd /Users/stefanmihalache/one && cd /Users/stefanmihalache/two".to_owned(), home),
             "cd ~/one && cd ~/two"
         );
     }
 
     #[test]
     fn does_not_abbreviate_a_sibling_that_merely_shares_the_home_prefix() {
-        let home = "/Users/prb";
-        assert_eq!(abbreviate_home_paths("/Users/prb-old/app".to_owned(), home), "/Users/prb-old/app");
-        assert_eq!(abbreviate_home_paths("/Users/prb.bak".to_owned(), home), "/Users/prb.bak");
-        assert_eq!(abbreviate_home_paths("/Users/prb_backup".to_owned(), home), "/Users/prb_backup");
+        let home = "/Users/stefanmihalache";
+        assert_eq!(abbreviate_home_paths("/Users/stefanmihalache-old/app".to_owned(), home), "/Users/stefanmihalache-old/app");
+        assert_eq!(abbreviate_home_paths("/Users/stefanmihalache.bak".to_owned(), home), "/Users/stefanmihalache.bak");
+        assert_eq!(abbreviate_home_paths("/Users/stefanmihalache_backup".to_owned(), home), "/Users/stefanmihalache_backup");
     }
 
     #[test]
     fn root_and_empty_home_are_left_untouched() {
-        assert_eq!(abbreviate_home_paths("/Users/prb/repo".to_owned(), "/"), "/Users/prb/repo");
-        assert_eq!(abbreviate_home_paths("/Users/prb/repo".to_owned(), ""), "/Users/prb/repo");
+        assert_eq!(abbreviate_home_paths("/Users/stefanmihalache/repo".to_owned(), "/"), "/Users/stefanmihalache/repo");
+        assert_eq!(abbreviate_home_paths("/Users/stefanmihalache/repo".to_owned(), ""), "/Users/stefanmihalache/repo");
     }
 }

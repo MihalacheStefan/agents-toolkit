@@ -61,9 +61,9 @@ mod tests {
 
     #[test]
     fn strip_trailing_slashes_removes_one_or_many_without_going_below_root() {
-        assert_eq!(strip_trailing_slashes(Path::new("/Users/prb/")), PathBuf::from("/Users/prb"));
-        assert_eq!(strip_trailing_slashes(Path::new("/Users/prb///")), PathBuf::from("/Users/prb"));
-        assert_eq!(strip_trailing_slashes(Path::new("/Users/prb")), PathBuf::from("/Users/prb"));
+        assert_eq!(strip_trailing_slashes(Path::new("/Users/stefanmihalache/")), PathBuf::from("/Users/stefanmihalache"));
+        assert_eq!(strip_trailing_slashes(Path::new("/Users/stefanmihalache///")), PathBuf::from("/Users/stefanmihalache"));
+        assert_eq!(strip_trailing_slashes(Path::new("/Users/stefanmihalache")), PathBuf::from("/Users/stefanmihalache"));
         assert_eq!(strip_trailing_slashes(Path::new("/")), PathBuf::from("/"));
         assert_eq!(strip_trailing_slashes(Path::new("///")), PathBuf::from("/"));
     }

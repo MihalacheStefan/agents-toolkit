@@ -2,8 +2,8 @@ import { describe, expect, test } from "vitest";
 import { groupSnapshotByRepo } from "@/lib/group";
 import { sampleSnapshot } from "@/lib/sample-snapshot";
 
-const toolkitRoot = "/Users/prb/projects/agent-toolkit";
-const skillsRoot = "/Users/prb/projects/agent-skills";
+const toolkitRoot = "/Users/stefanmihalache/projects/agents-toolkit";
+const skillsRoot = "/Users/stefanmihalache/projects/agent-skills";
 
 describe("groupSnapshotByRepo", () => {
   test("creates lanes for session and claim roots and sorts them by recent activity", () => {

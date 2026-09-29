@@ -32,8 +32,8 @@ export const sampleSnapshot = {
     {
       client: "claude",
       session_id: "7ca88f40-3aed-4f2d-be71-a80e544dd332",
-      cwd: "/Users/prb/projects/agent-toolkit",
-      repo_root: "/Users/prb/projects/agent-toolkit",
+      cwd: "/Users/stefanmihalache/projects/agents-toolkit",
+      repo_root: "/Users/stefanmihalache/projects/agents-toolkit",
       state: "working",
       callsign: "👩‍💻 Baroness Byte",
       name: "live-coordination-dashboard",
@@ -48,8 +48,8 @@ export const sampleSnapshot = {
     {
       client: "codex",
       session_id: "019fcbf9-d75c-7ba3-a481-18068ea954eb",
-      cwd: "/Users/prb/projects/agent-toolkit/apps/coord-dashboard",
-      repo_root: "/Users/prb/projects/agent-toolkit",
+      cwd: "/Users/stefanmihalache/projects/agents-toolkit/apps/coord-dashboard",
+      repo_root: "/Users/stefanmihalache/projects/agents-toolkit",
       state: "working",
       callsign: "🦊 Patch Fox",
       name: null,
@@ -63,8 +63,8 @@ export const sampleSnapshot = {
     {
       client: "codex",
       session_id: "019fcbf9-2db4-7be1-90ed-7ba4a7527a84",
-      cwd: "/Users/prb/projects/agent-toolkit",
-      repo_root: "/Users/prb/projects/agent-toolkit",
+      cwd: "/Users/stefanmihalache/projects/agents-toolkit",
+      repo_root: "/Users/stefanmihalache/projects/agents-toolkit",
       state: "waiting",
       callsign: "🐢 Queue Kid",
       name: null,
@@ -78,8 +78,8 @@ export const sampleSnapshot = {
     {
       client: "codex",
       session_id: "019fcbf1-1a53-7e20-a682-520d66c5b87f",
-      cwd: "/Users/prb/projects/agent-toolkit",
-      repo_root: "/Users/prb/projects/agent-toolkit",
+      cwd: "/Users/stefanmihalache/projects/agents-toolkit",
+      repo_root: "/Users/stefanmihalache/projects/agents-toolkit",
       state: "waiting",
       callsign: null,
       name: null,
@@ -93,8 +93,8 @@ export const sampleSnapshot = {
     {
       client: "codex",
       session_id: "019fcbc9-fc31-7772-9bc9-1c7af36775f5",
-      cwd: "/Users/prb/projects/agent-skills",
-      repo_root: "/Users/prb/projects/agent-skills",
+      cwd: "/Users/stefanmihalache/projects/agents-skills",
+      repo_root: "/Users/stefanmihalache/projects/agents-skills",
       state: "idle",
       callsign: "🧭 Chain Scout",
       name: null,
@@ -118,7 +118,7 @@ export const sampleSnapshot = {
       updated_at: 1_785_833_718,
       claims: [
         {
-          repo_root: "/Users/prb/projects/agent-toolkit",
+          repo_root: "/Users/stefanmihalache/projects/agents-toolkit",
           scope_count: 1,
           scopes: [{ path: "apps/coord-dashboard", kind: "recursive" }],
         },
@@ -136,7 +136,7 @@ export const sampleSnapshot = {
       updated_at: 1_785_833_400,
       claims: [
         {
-          repo_root: "/Users/prb/projects/agent-toolkit",
+          repo_root: "/Users/stefanmihalache/projects/agents-toolkit",
           blocked_reason: "coverage",
           scope_count: 1,
           scopes: [{ path: "cli", kind: "exact" }],
@@ -155,13 +155,13 @@ export const sampleSnapshot = {
       updated_at: 1_785_833_330,
       claims: [
         {
-          repo_root: "/Users/prb/projects/agent-toolkit",
+          repo_root: "/Users/stefanmihalache/projects/agents-toolkit",
           blocked_reason: "held by monorepo-dashboard-orchestrator",
           scope_count: 1,
           scopes: [{ path: "README.md", kind: "exact" }],
         },
         {
-          repo_root: "/Users/prb/projects/agent-skills",
+          repo_root: "/Users/stefanmihalache/projects/agents-skills",
           blocked_reason: "held by evm-atlas-routing",
           scope_count: 1,
           scopes: [{ path: "README.md", kind: "exact" }],
@@ -179,7 +179,7 @@ export const sampleSnapshot = {
       updated_at: 1_785_833_360,
       claims: [
         {
-          repo_root: "/Users/prb/projects/agent-skills",
+          repo_root: "/Users/stefanmihalache/projects/agents-skills",
           scope_count: 1,
           scopes: [{ path: "skills/evm-atlas", kind: "recursive" }],
         },
@@ -195,8 +195,8 @@ export const sampleSnapshot = {
       created_at: 1_785_833_260,
       updated_at: 1_785_833_700,
       claims: [
-        { repo_root: "/Users/prb/projects/agent-toolkit", scope_count: 2 },
-        { repo_root: "/Users/prb/projects/agent-skills", scope_count: 1 },
+        { repo_root: "/Users/stefanmihalache/projects/agents-toolkit", scope_count: 2 },
+        { repo_root: "/Users/stefanmihalache/projects/agents-skills", scope_count: 1 },
       ],
     },
     {
@@ -210,7 +210,7 @@ export const sampleSnapshot = {
       created_at: 1_785_833_500,
       updated_at: 1_785_833_690,
       claims: [
-        { repo_root: "/Users/prb/projects/agent-toolkit", scope_count: 1 },
+        { repo_root: "/Users/stefanmihalache/projects/agents-toolkit", scope_count: 1 },
       ],
     },
   ],
@@ -218,7 +218,7 @@ export const sampleSnapshot = {
   findings: [
     {
       id: "5defa09e",
-      repo_root: "/Users/prb/projects/agent-toolkit",
+      repo_root: "/Users/stefanmihalache/projects/agents-toolkit",
       summary:
         "Provider coverage may be partial while the calling Claude session is mid-turn.",
       kind: "bug",
@@ -235,7 +235,7 @@ export const sampleSnapshot = {
     },
     {
       id: "4f7d2b11",
-      repo_root: "/Users/prb/projects/agent-toolkit",
+      repo_root: "/Users/stefanmihalache/projects/agents-toolkit",
       summary:
         "Dashboard API contract is ready for the implementation handoff.",
       kind: "docs",
@@ -255,7 +255,7 @@ export const sampleSnapshot = {
     },
     {
       id: "5d8caf48",
-      repo_root: "/Users/prb/projects/agent-skills",
+      repo_root: "/Users/stefanmihalache/projects/agents-skills",
       summary:
         "A terminated agent may remain visible until its provider inventory refreshes.",
       kind: "improvement",
@@ -302,7 +302,7 @@ export const sampleSnapshot = {
       recipient_client: "codex",
       recipient_session_id: "019fcbf9-d75c-7ba3-a481-18068ea954eb",
       recipient_callsign: "🦊 Patch Fox",
-      repo_root: "/Users/prb/projects/agent-toolkit",
+      repo_root: "/Users/stefanmihalache/projects/agents-toolkit",
       text: "Implement apps/coord-dashboard/** against the approved snapshot API contract.",
       created_at: 1_785_833_720,
       acknowledged_at: null,
@@ -315,7 +315,7 @@ export const sampleSnapshot = {
       recipient_client: "claude",
       recipient_session_id: "7ca88f40-3aed-4f2d-be71-a80e544dd332",
       recipient_callsign: "👩‍💻 Baroness Byte",
-      repo_root: "/Users/prb/projects/agent-toolkit",
+      repo_root: "/Users/stefanmihalache/projects/agents-toolkit",
       text: "The HTTP snapshot endpoint is ready for integration.",
       created_at: 1_785_833_680,
       acknowledged_at: 1_785_833_690,
@@ -328,7 +328,7 @@ export const sampleSnapshot = {
       recipient_client: "codex",
       recipient_session_id: "019fcbf9-d75c-7ba3-a481-18068ea954eb",
       recipient_callsign: "🦊 Patch Fox",
-      repo_root: "/Users/prb/projects/agent-skills",
+      repo_root: "/Users/stefanmihalache/projects/agents-skills",
       text: "The provider-routing reference is the only shared generated input in this scope.",
       created_at: 1_785_833_360,
       acknowledged_at: null,
