@@ -141,7 +141,7 @@ fn dependency_order_ignores_hyphens_in_target_skill_names() {
         temporary.path().join("skills/alpha/SKILL.md"),
         common::skill(
             "alpha",
-            "skill-dependencies:\n  - PaulRBerg/dot-agents#codebase-design\n  - code-polish\n  - commit\n",
+            "skill-dependencies:\n  - MihalacheStefan/dot-agents#codebase-design\n  - code-polish\n  - commit\n",
         ),
     );
     common::write(temporary.path().join("skills/code-polish/SKILL.md"), common::skill("code-polish", ""));
