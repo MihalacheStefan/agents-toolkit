@@ -463,6 +463,7 @@ pub(crate) enum FindingResolutionArg {
 pub(crate) enum HookClient {
     Codex,
     Claude,
+    Agy,
 }
 
 #[derive(Debug, Args)]

@@ -166,6 +166,7 @@ pub(super) fn parse_client(value: String) -> rusqlite::Result<Client> {
     match value.as_str() {
         "codex" => Ok(Client::Codex),
         "claude" => Ok(Client::Claude),
+        "agy" => Ok(Client::Agy),
         _ => Err(invalid_value(format!("invalid client {value:?}"))),
     }
 }

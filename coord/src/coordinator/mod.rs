@@ -545,7 +545,7 @@ fn snapshot_handoffs(roots: Vec<PathBuf>) -> Vec<SnapshotHandoffV4> {
 
 fn cached_inventory(store: &Store, key: &str, current: f64) -> Result<Option<InventoryResult>> {
     let rows = store.provider_cache(key)?;
-    if rows.len() != 2 {
+    if rows.len() != 3 {
         return Ok(None);
     }
     let refreshed = rows[0].refreshed_at;

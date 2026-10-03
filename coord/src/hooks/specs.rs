@@ -4,6 +4,7 @@
 pub(crate) enum Client {
     Codex,
     Claude,
+    Agy,
 }
 
 impl Client {
@@ -11,6 +12,7 @@ impl Client {
         match self {
             Self::Codex => "codex",
             Self::Claude => "claude",
+            Self::Agy => "agy",
         }
     }
 }
@@ -193,10 +195,54 @@ const CLAUDE_HOOK_SPECS: &[HookSpec] = &[
     },
 ];
 
+const AGY_HOOK_SPECS: &[HookSpec] = &[
+    HookSpec {
+        event: "Stop",
+        command: "ai-coord hook agy",
+        matcher: None,
+        timeout: Some(5),
+        additional_context_limit: None,
+        if_filter: None,
+        async_: None,
+        async_rewake: None,
+    },
+    HookSpec {
+        event: "PostToolUse",
+        command: "ai-coord hook agy",
+        matcher: Some("*"),
+        timeout: Some(5),
+        additional_context_limit: None,
+        if_filter: None,
+        async_: None,
+        async_rewake: None,
+    },
+    HookSpec {
+        event: "PreToolUse",
+        command: "ai-coord hook agy",
+        matcher: Some("*"),
+        timeout: Some(5),
+        additional_context_limit: None,
+        if_filter: None,
+        async_: None,
+        async_rewake: None,
+    },
+    HookSpec {
+        event: "SessionEnd",
+        command: "ai-coord hook agy",
+        matcher: None,
+        timeout: Some(5),
+        additional_context_limit: None,
+        if_filter: None,
+        async_: None,
+        async_rewake: None,
+    },
+];
+
 pub(crate) const fn hook_specs(client: Client) -> &'static [HookSpec] {
     match client {
         Client::Codex => CODEX_HOOK_SPECS,
         Client::Claude => CLAUDE_HOOK_SPECS,
+        Client::Agy => AGY_HOOK_SPECS,
     }
 }
 

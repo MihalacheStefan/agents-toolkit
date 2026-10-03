@@ -4,7 +4,7 @@ use rusqlite::{Connection, TransactionBehavior};
 
 use crate::error::{AppError, Result};
 
-pub(crate) const SCHEMA_VERSION: i64 = 19;
+pub(crate) const SCHEMA_VERSION: i64 = 20;
 
 const STATEMENTS: &[&str] = &[
     "CREATE TABLE sessions (
@@ -229,7 +229,7 @@ const STATEMENTS: &[&str] = &[
     "CREATE TABLE finding_sightings (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         finding_id TEXT NOT NULL REFERENCES findings(id) ON DELETE CASCADE,
-        author_client TEXT NOT NULL CHECK (author_client IN ('codex', 'claude')),
+        author_client TEXT NOT NULL CHECK (author_client IN ('codex', 'claude', 'agy')),
         author_session_id TEXT NOT NULL,
         turn_id TEXT,
         head_oid TEXT,
@@ -257,7 +257,7 @@ const STATEMENTS: &[&str] = &[
         to_state TEXT NOT NULL CHECK (to_state IN (
             'pending', 'handed-off', 'fixed', 'stale', 'rejected', 'duplicate'
         )),
-        actor_client TEXT NOT NULL CHECK (actor_client IN ('codex', 'claude')),
+        actor_client TEXT NOT NULL CHECK (actor_client IN ('codex', 'claude', 'agy')),
         actor_session_id TEXT NOT NULL,
         handoff_path TEXT,
         commit_oid TEXT,
@@ -304,7 +304,7 @@ const STATEMENTS: &[&str] = &[
     )",
     "CREATE TABLE provider_cache (
         context_key TEXT NOT NULL,
-        client TEXT NOT NULL CHECK (client IN ('codex', 'claude')),
+        client TEXT NOT NULL CHECK (client IN ('codex', 'claude', 'agy')),
         refreshed_at REAL NOT NULL,
         ok INTEGER NOT NULL CHECK (ok IN (0, 1)),
         source TEXT NOT NULL,

@@ -3,7 +3,7 @@ use crate::{
     error::Result,
     hooks::{config::inspect_hooks, specs::Client as HookClient, trust::inspect_codex_hook_trust},
     host::{
-        ClaudeSessionObservation, CodexHookLedgerEvidence, ProviderContext, codex_provider_report,
+        ClaudeSessionObservation, CodexHookLedgerEvidence, ProviderContext, agy_provider_report, codex_provider_report,
         collect_claude_inventory, inventory_result,
     },
     state::Store,
@@ -55,8 +55,9 @@ impl ProviderInventory for HostInventory {
             },
         );
         let claude = collect_claude_inventory(self.context.claude_executable.as_deref(), probe);
+        let agy = agy_provider_report(self.context.agy_executable.as_deref());
         Ok(InventoryObservation {
-            result: inventory_result(vec![codex, claude.report.clone()]),
+            result: inventory_result(vec![codex, claude.report.clone(), agy]),
             claude_sessions: claude.sessions,
             claude_authoritative: claude.authoritative,
         })
@@ -87,7 +88,7 @@ impl ProviderInventory for StaticInventory {
 
     fn refresh(&mut self, _store: &Store, _probe: &dyn ProcessProbe) -> Result<InventoryObservation> {
         self.refreshes.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        let reports = [Client::Codex, Client::Claude]
+        let reports = [Client::Codex, Client::Claude, Client::Agy]
             .into_iter()
             .map(|client| crate::domain::ProviderReport {
                 client,

@@ -8,6 +8,7 @@ pub(crate) const fn client_name(client: Client) -> &'static str {
     match client {
         Client::Codex => "codex",
         Client::Claude => "claude",
+        Client::Agy => "agy",
     }
 }
 

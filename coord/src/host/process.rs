@@ -122,6 +122,7 @@ struct NativeProcess {
     start_marker: String,
     codex_match: bool,
     claude_match: bool,
+    agy_match: bool,
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -236,6 +237,7 @@ impl NativeProcessProbe {
             let is_match = match client {
                 crate::domain::Client::Codex => process.codex_match,
                 crate::domain::Client::Claude => process.claude_match,
+                crate::domain::Client::Agy => process.agy_match,
             };
             if is_match {
                 return self.fingerprint_process(&process).map(Some).map_err(|error| {
@@ -308,7 +310,11 @@ fn host_matches(name: &str, client: &str) -> bool {
         normalized.split(['/', '\\']).any(|part| {
             part == client ||
                 part.starts_with(&format!("{client}@")) ||
-                (client == "claude" && (part == "claude-code" || part.starts_with("claude-code@")))
+                (client == "claude" && (part == "claude-code" || part.starts_with("claude-code@"))) ||
+                (client == "agy" &&
+                    (part == "antigravity" ||
+                        part.starts_with("antigravity@") ||
+                        part.starts_with("antigravity-cli")))
         })
 }
 
@@ -374,6 +380,7 @@ impl ProcessBackend for NativeBackend {
             start_marker,
             codex_match: names.iter().any(|name| host_matches(name, "codex")),
             claude_match: names.iter().any(|name| host_matches(name, "claude")),
+            agy_match: names.iter().any(|name| host_matches(name, "agy")),
         })
     }
 }
@@ -437,6 +444,7 @@ mod macos {
                 start_marker: format!("{}:{}", info.pbi_start_tvsec, info.pbi_start_tvusec),
                 codex_match: names.iter().any(|name| host_matches(name, "codex")),
                 claude_match: names.iter().any(|name| host_matches(name, "claude")),
+                agy_match: names.iter().any(|name| host_matches(name, "agy")),
             })
         }
     }
@@ -628,6 +636,7 @@ mod tests {
             start_marker: marker.to_owned(),
             codex_match: false,
             claude_match: false,
+            agy_match: false,
         }
     }
 
@@ -671,17 +680,21 @@ mod tests {
     #[test]
     fn captures_matching_host_above_shell_without_cross_client_match() {
         let mut shell = fake_process(30, 20, NativeState::Alive, "shell");
-        let mut codex = fake_process(20, 10, NativeState::Alive, "codex");
+        let mut codex = fake_process(20, 15, NativeState::Alive, "codex");
         codex.codex_match = true;
-        let mut claude = fake_process(10, 1, NativeState::Alive, "claude");
+        let mut claude = fake_process(15, 10, NativeState::Alive, "claude");
         claude.claude_match = true;
+        let mut agy = fake_process(10, 1, NativeState::Alive, "agy");
+        agy.agy_match = true;
         shell.codex_match = false;
-        let probe = fake_probe([(30, Ok(shell)), (20, Ok(codex)), (10, Ok(claude))]);
+        let probe = fake_probe([(30, Ok(shell)), (20, Ok(codex)), (15, Ok(claude)), (10, Ok(agy))]);
 
         let codex = probe.host_ancestor(Client::Codex, 30).unwrap().unwrap();
         let claude = probe.host_ancestor(Client::Claude, 30).unwrap().unwrap();
+        let agy = probe.host_ancestor(Client::Agy, 30).unwrap().unwrap();
         assert_eq!(codex.pid, 20);
-        assert_eq!(claude.pid, 10);
+        assert_eq!(claude.pid, 15);
+        assert_eq!(agy.pid, 10);
     }
 
     #[test]
@@ -749,8 +762,12 @@ mod tests {
         assert!(host_matches("/usr/local/bin/codex", "codex"));
         assert!(host_matches("/packages/claude@1.2.3/cli.js", "claude"));
         assert!(host_matches("/packages/claude-code@1.2.3/cli.js", "claude"));
+        assert!(host_matches("/usr/local/bin/agy", "agy"));
+        assert!(host_matches("/usr/local/bin/antigravity", "agy"));
+        assert!(host_matches("/opt/antigravity-cli/bin/agy", "agy"));
         assert!(!host_matches("ai-coord", "codex"));
         assert!(!host_matches("codex-helper", "codex"));
         assert!(!host_matches("claude-code-transcripts", "claude"));
+        assert!(!host_matches("ai-coord", "agy"));
     }
 }

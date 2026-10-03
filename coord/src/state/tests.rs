@@ -272,7 +272,7 @@ fn incompatible_schema_is_rejected_without_schema_or_journal_mutation() {
     assert_eq!(
         error.to_string(),
         format!(
-            "state schema 17 is incompatible with required schema 19 at {}; \
+            "state schema 17 is incompatible with required schema 20 at {}; \
              close all agents and explicitly replace the ledger before retrying",
             path.display()
         )

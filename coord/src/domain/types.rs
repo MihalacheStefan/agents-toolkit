@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 pub(crate) enum Client {
     Codex,
     Claude,
+    Agy,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]

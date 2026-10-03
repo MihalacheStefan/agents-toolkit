@@ -280,6 +280,7 @@ fn parse_stored_origin(value: &str) -> rusqlite::Result<Identity> {
     let client = match client {
         "codex" => Client::Codex,
         "claude" => Client::Claude,
+        "agy" => Client::Agy,
         _ => return Err(invalid_value("invalid triage origin client".to_owned())),
     };
     Ok(Identity { client, session_id: session_id.to_owned() })

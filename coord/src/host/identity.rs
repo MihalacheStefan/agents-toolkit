@@ -11,6 +11,7 @@ pub(crate) fn identity_key(identity: &Identity) -> String {
     let client = match identity.client {
         Client::Codex => "codex",
         Client::Claude => "claude",
+        Client::Agy => "agy",
     };
     format!("{client}/{}", identity.session_id)
 }
@@ -28,6 +29,7 @@ fn from_environment_with(mut get: impl FnMut(&str) -> Option<OsString>) -> Optio
         let client = match client {
             "codex" => Client::Codex,
             "claude" => Client::Claude,
+            "agy" | "antigravity" => Client::Agy,
             _ => return host_environment(&mut get),
         };
         return Some(Identity { client, session_id });
@@ -42,9 +44,16 @@ fn host_environment(get: &mut impl FnMut(&str) -> Option<OsString>) -> Option<Id
     if let Some(session_id) = get("CODEX_THREAD_ID").and_then(nonempty_utf8) {
         return Some(Identity { client: Client::Codex, session_id });
     }
-    get("CLAUDE_CODE_SESSION_ID")
-        .and_then(nonempty_utf8)
-        .map(|session_id| Identity { client: Client::Claude, session_id })
+    if let Some(session_id) = get("CLAUDE_CODE_SESSION_ID").and_then(nonempty_utf8) {
+        return Some(Identity { client: Client::Claude, session_id });
+    }
+    if let Some(session_id) = get("ANTIGRAVITY_CONVERSATION_ID").and_then(nonempty_utf8) {
+        return Some(Identity { client: Client::Agy, session_id });
+    }
+    if let Some(session_id) = get("AGY_SESSION_ID").and_then(nonempty_utf8) {
+        return Some(Identity { client: Client::Agy, session_id });
+    }
+    get("ANTIGRAVITY_SESSION_ID").and_then(nonempty_utf8).map(|session_id| Identity { client: Client::Agy, session_id })
 }
 
 fn nonempty_utf8(value: OsString) -> Option<String> {
@@ -78,12 +87,13 @@ fn delegate_signal_with(mut get: impl FnMut(&str) -> Option<OsString>) -> Option
     let override_identity = match (override_client.as_deref(), override_session) {
         (Some("codex"), Some(session_id)) => Some(Identity { client: Client::Codex, session_id }),
         (Some("claude"), Some(session_id)) => Some(Identity { client: Client::Claude, session_id }),
+        (Some("agy" | "antigravity"), Some(session_id)) => Some(Identity { client: Client::Agy, session_id }),
         _ => None,
     };
 
     if let Some(override_identity) = override_identity {
         return host_environment(&mut get)
-            .filter(|host| *host != override_identity)
+            .filter(|host| host.client == override_identity.client && *host != override_identity)
             .map(|host| DelegateSignal::Override { host });
     }
 
@@ -168,6 +178,28 @@ mod tests {
     #[test]
     fn identity_key_uses_stable_provider_prefix() {
         assert_eq!(identity_key(&Identity { client: Client::Codex, session_id: "abc".to_owned() }), "codex/abc");
+        assert_eq!(identity_key(&Identity { client: Client::Claude, session_id: "abc".to_owned() }), "claude/abc");
+        assert_eq!(identity_key(&Identity { client: Client::Agy, session_id: "abc".to_owned() }), "agy/abc");
+    }
+
+    #[test]
+    fn antigravity_conversation_id_resolves_to_agy_client() {
+        assert_eq!(
+            resolve(&[("ANTIGRAVITY_CONVERSATION_ID", "agy-conv-123")]),
+            Some(Identity { client: Client::Agy, session_id: "agy-conv-123".to_owned() })
+        );
+        assert_eq!(
+            resolve(&[("AGY_SESSION_ID", "agy-sess-456")]),
+            Some(Identity { client: Client::Agy, session_id: "agy-sess-456".to_owned() })
+        );
+        assert_eq!(
+            resolve(&[("AI_COORD_CLIENT", "agy"), ("AI_COORD_SESSION_ID", "manual-agy")]),
+            Some(Identity { client: Client::Agy, session_id: "manual-agy".to_owned() })
+        );
+        assert_eq!(
+            resolve(&[("AI_COORD_CLIENT", "antigravity"), ("AI_COORD_SESSION_ID", "manual-antigravity")]),
+            Some(Identity { client: Client::Agy, session_id: "manual-antigravity".to_owned() })
+        );
     }
 
     fn signal(values: &[(&str, &str)]) -> Option<DelegateSignal> {
@@ -194,6 +226,26 @@ mod tests {
     #[test]
     fn override_with_no_host_environment_reports_no_delegate_signal() {
         assert_eq!(signal(&[("AI_COORD_CLIENT", "codex"), ("AI_COORD_SESSION_ID", "parent")]), None);
+    }
+
+    #[test]
+    fn override_with_differing_client_host_environment_reports_no_delegate_signal() {
+        assert_eq!(
+            signal(&[
+                ("AI_COORD_CLIENT", "codex"),
+                ("AI_COORD_SESSION_ID", "parent"),
+                ("ANTIGRAVITY_CONVERSATION_ID", "agy-conv"),
+            ]),
+            None
+        );
+        assert_eq!(
+            signal(&[
+                ("AI_COORD_CLIENT", "agy"),
+                ("AI_COORD_SESSION_ID", "parent"),
+                ("ANTIGRAVITY_CONVERSATION_ID", "child"),
+            ]),
+            Some(DelegateSignal::Override { host: Identity { client: Client::Agy, session_id: "child".to_owned() } })
+        );
     }
 
     #[test]

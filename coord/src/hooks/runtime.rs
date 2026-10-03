@@ -61,7 +61,11 @@ impl<'a> HookRuntime<'a> {
 
     /// Apply one supported lifecycle event and return only bounded, host-safe stdout.
     pub(crate) fn ingest(&self, client: &str, payload: &Value) -> String {
-        let event = payload.get("hook_event_name").and_then(Value::as_str).unwrap_or("unknown");
+        let event = payload
+            .get("hook_event_name")
+            .or_else(|| payload.get("hookEventName"))
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
         let Some(client_kind) = parse_client(client) else {
             return noop_stdout(client, event);
         };
@@ -97,8 +101,12 @@ impl<'a> HookRuntime<'a> {
         payload: &Value,
     ) -> Result<String> {
         let client = identity.client;
-        let transcript_path =
-            payload.get("transcript_path").and_then(Value::as_str).filter(|value| !value.is_empty()).map(str::to_owned);
+        let transcript_path = payload
+            .get("transcript_path")
+            .or_else(|| payload.get("transcriptPath"))
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned);
         let mut store = self.coordinator.store()?;
 
         if event == "SessionEnd" {
@@ -357,6 +365,8 @@ impl<'a> HookRuntime<'a> {
 fn hook_target<'a>(client: Client, event: &str, payload: &'a Value) -> Result<(Identity, Option<&'a str>)> {
     let session_id = payload
         .get("session_id")
+        .or_else(|| payload.get("conversationId"))
+        .or_else(|| payload.get("conversation_id"))
         .and_then(Value::as_str)
         .filter(|value| !value.is_empty())
         .ok_or_else(|| AppError::usage("missing session id"))?;
@@ -364,6 +374,8 @@ fn hook_target<'a>(client: Client, event: &str, payload: &'a Value) -> Result<(I
         Some(
             payload
                 .get("agent_id")
+                .or_else(|| payload.get("subagent_id"))
+                .or_else(|| payload.get("agentId"))
                 .and_then(Value::as_str)
                 .filter(|value| !value.is_empty())
                 .ok_or_else(|| AppError::usage("missing subagent id"))?,
@@ -377,7 +389,12 @@ fn hook_target<'a>(client: Client, event: &str, payload: &'a Value) -> Result<(I
 /// Resolve the payload working directory, consulting the process directory
 /// only when the payload omits one.
 fn hook_cwd(payload: &Value) -> Result<PathBuf> {
-    let cwd = match payload.get("cwd").and_then(Value::as_str).filter(|value| !value.is_empty()) {
+    let cwd = match payload
+        .get("cwd")
+        .or_else(|| payload.get("workspacePaths").and_then(|v| v.as_array()?.first()))
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+    {
         Some(value) => PathBuf::from(value),
         None => std::env::current_dir()?,
     };
@@ -388,6 +405,7 @@ fn supported_events(client: Client) -> impl Iterator<Item = &'static str> {
     let client = match client {
         Client::Codex => HookClient::Codex,
         Client::Claude => HookClient::Claude,
+        Client::Agy => HookClient::Agy,
     };
     hook_specs(client).iter().filter(|spec| spec.command.starts_with("ai-coord hook ")).map(|spec| spec.event)
 }
@@ -648,7 +666,11 @@ fn collect_touched(value: &Value, paths: &mut Vec<String>) {
 }
 
 fn noop_stdout(client: &str, event: &str) -> String {
-    if client == "codex" && matches!(event, "Stop" | "SubagentStop") { "{}".to_owned() } else { String::new() }
+    if (client == "codex" && matches!(event, "Stop" | "SubagentStop")) || client == "agy" {
+        "{}".to_owned()
+    } else {
+        String::new()
+    }
 }
 fn contains_exact_id(message: &str, id: &str) -> bool {
     message.match_indices(id).any(|(start, value)| {
@@ -659,12 +681,16 @@ fn contains_exact_id(message: &str, id: &str) -> bool {
     })
 }
 fn is_nudge_event(client: Client, event: &str) -> bool {
-    matches!((client, event), (Client::Claude, "PostToolBatch") | (Client::Codex, "PostToolUse"))
+    matches!(
+        (client, event),
+        (Client::Claude, "PostToolBatch") | (Client::Codex, "PostToolUse") | (Client::Agy, "PostToolUse")
+    )
 }
 fn parse_client(client: &str) -> Option<Client> {
     match client {
         "codex" => Some(Client::Codex),
         "claude" => Some(Client::Claude),
+        "agy" => Some(Client::Agy),
         _ => None,
     }
 }

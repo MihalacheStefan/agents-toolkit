@@ -604,13 +604,14 @@ fn hook_event(payload: &Value) -> &str {
 }
 
 fn noop_hook_output(client: &str, event: &str) -> &'static str {
-    if client == "codex" && matches!(event, "Stop" | "SubagentStop") { "{}" } else { "" }
+    if (client == "codex" && matches!(event, "Stop" | "SubagentStop")) || client == "agy" { "{}" } else { "" }
 }
 
 fn hook_client_name(client: HookClient) -> &'static str {
     match client {
         HookClient::Codex => "codex",
         HookClient::Claude => "claude",
+        HookClient::Agy => "agy",
     }
 }
 
@@ -638,6 +639,7 @@ fn run_link(client: LinkClient, path: Option<&Path>, dry_run: bool, force: bool)
         let requested = match selected {
             HookConfigClient::Codex => None,
             HookConfigClient::Claude => path,
+            HookConfigClient::Agy => path,
         };
         let result = link_default_hooks(*selected, requested, dry_run, force).map_err(config_error)?;
         let trust = if *selected == HookConfigClient::Codex {
@@ -840,6 +842,7 @@ fn hook_config_client_name(client: HookConfigClient) -> &'static str {
     match client {
         HookConfigClient::Codex => "codex",
         HookConfigClient::Claude => "claude",
+        HookConfigClient::Agy => "agy",
     }
 }
 

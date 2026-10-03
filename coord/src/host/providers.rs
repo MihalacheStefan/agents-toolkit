@@ -20,6 +20,7 @@ pub(crate) const INVENTORY_CACHE_SECONDS: f64 = 2.0;
 pub(crate) const CLAUDE_INVENTORY_TIMEOUT: Duration = Duration::from_secs(10);
 pub(crate) const CLAUDE_PROVIDER_SOURCE: &str = "claude-agents-json";
 pub(crate) const CODEX_PROVIDER_SOURCE: &str = "hook-ledger";
+pub(crate) const AGY_PROVIDER_SOURCE: &str = "environment";
 const CLAUDE_PARTIAL_RETRY_ATTEMPTS: usize = 3;
 const CLAUDE_PARTIAL_RETRY_DELAY: Duration = Duration::from_millis(25);
 
@@ -27,6 +28,7 @@ const CLAUDE_PARTIAL_RETRY_DELAY: Duration = Duration::from_millis(25);
 pub(crate) struct ProviderContext {
     pub(crate) codex_executable: Option<PathBuf>,
     pub(crate) claude_executable: Option<PathBuf>,
+    pub(crate) agy_executable: Option<PathBuf>,
     pub(crate) codex_home: PathBuf,
     pub(crate) claude_config_dir: PathBuf,
     pub(crate) cache_key: String,
@@ -36,6 +38,7 @@ impl ProviderContext {
     pub(crate) fn discover() -> Self {
         let codex_executable = discover_executable("codex");
         let claude_executable = discover_executable("claude");
+        let agy_executable = discover_executable("agy").or_else(|| discover_executable("antigravity"));
         let home = home_dir().unwrap_or_else(|| PathBuf::from("."));
         let codex_home = env::var_os("CODEX_HOME")
             .filter(|value| !value.is_empty())
@@ -45,26 +48,29 @@ impl ProviderContext {
             .filter(|value| !value.is_empty())
             .map(PathBuf::from)
             .unwrap_or_else(|| home.join(".claude"));
-        Self::new(codex_executable, claude_executable, codex_home, claude_config_dir)
+        Self::new(codex_executable, claude_executable, agy_executable, codex_home, claude_config_dir)
     }
 
     pub(crate) fn new(
         codex_executable: Option<PathBuf>,
         claude_executable: Option<PathBuf>,
+        agy_executable: Option<PathBuf>,
         codex_home: PathBuf,
         claude_config_dir: PathBuf,
     ) -> Self {
         let codex_executable = codex_executable.map(|path| resolved_context_path(&path));
         let claude_executable = claude_executable.map(|path| resolved_context_path(&path));
+        let agy_executable = agy_executable.map(|path| resolved_context_path(&path));
         let codex_home = resolved_context_path(&codex_home);
         let claude_config_dir = resolved_context_path(&claude_config_dir);
         let cache_key = provider_context_key(
             codex_executable.as_deref(),
             claude_executable.as_deref(),
+            agy_executable.as_deref(),
             &codex_home,
             &claude_config_dir,
         );
-        Self { codex_executable, claude_executable, codex_home, claude_config_dir, cache_key }
+        Self { codex_executable, claude_executable, agy_executable, codex_home, claude_config_dir, cache_key }
     }
 
     pub(crate) fn codex_hooks_path(&self) -> PathBuf {
@@ -328,13 +334,22 @@ fn provider_report(
     ProviderReport { client, ok, source: source.to_owned(), enabled, dropped, error }
 }
 
+pub(crate) fn agy_provider_report(executable: Option<&Path>) -> ProviderReport {
+    if executable.is_none() {
+        return provider_report(Client::Agy, true, AGY_PROVIDER_SOURCE, false, 0, None);
+    }
+    provider_report(Client::Agy, true, AGY_PROVIDER_SOURCE, true, 0, None)
+}
+
 fn provider_context_key(
     codex_executable: Option<&Path>,
     claude_executable: Option<&Path>,
+    agy_executable: Option<&Path>,
     codex_home: &Path,
     claude_config_dir: &Path,
 ) -> String {
     let values = [
+        ("agy_executable", agy_executable),
         ("claude_config_dir", Some(claude_config_dir)),
         ("claude_executable", claude_executable),
         ("codex_executable", codex_executable),
@@ -549,18 +564,29 @@ mod tests {
         let first = ProviderContext::new(
             Some(PathBuf::from("/bin/codex")),
             None,
+            None,
             PathBuf::from("/tmp/codex"),
             PathBuf::from("/tmp/claude"),
         );
         let same = ProviderContext::new(
             Some(PathBuf::from("/bin/codex")),
             None,
+            None,
             PathBuf::from("/tmp/codex"),
             PathBuf::from("/tmp/claude"),
         );
-        let changed = ProviderContext::new(None, None, PathBuf::from("/tmp/codex"), PathBuf::from("/tmp/claude"));
+        let changed = ProviderContext::new(None, None, None, PathBuf::from("/tmp/codex"), PathBuf::from("/tmp/claude"));
         assert_eq!(first.cache_key, same.cache_key);
         assert_ne!(first.cache_key, changed.cache_key);
+    }
+
+    #[test]
+    fn agy_report_uses_executable_presence() {
+        assert_eq!(agy_provider_report(None), provider_report(Client::Agy, true, AGY_PROVIDER_SOURCE, false, 0, None));
+        assert_eq!(
+            agy_provider_report(Some(Path::new("/bin/agy"))),
+            provider_report(Client::Agy, true, AGY_PROVIDER_SOURCE, true, 0, None)
+        );
     }
 
     #[test]

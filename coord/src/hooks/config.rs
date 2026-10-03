@@ -59,6 +59,7 @@ pub(crate) fn default_hook_path(client: Client) -> PathBuf {
     match client {
         Client::Codex => config_root("CODEX_HOME", ".codex").join("hooks.json"),
         Client::Claude => config_root("CLAUDE_CONFIG_DIR", ".claude").join("settings.json"),
+        Client::Agy => config_root("AGY_CONFIG_DIR", ".gemini/config").join("hooks.json"),
     }
 }
 
@@ -70,6 +71,7 @@ pub(crate) fn link_path(client: Client, requested: Option<&Path>) -> Result<Path
         (_, Some(path)) => Ok(path.to_path_buf()),
         (Client::Claude, None) => Ok(claude_link_path(default_hook_path(Client::Claude))),
         (Client::Codex, None) => Ok(default_hook_path(Client::Codex)),
+        (Client::Agy, None) => Ok(default_hook_path(Client::Agy)),
     }
 }
 
