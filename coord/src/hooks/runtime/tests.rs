@@ -1767,3 +1767,56 @@ fn specific_message_notification_marking_preserves_later_arrivals() {
     assert_eq!(selected, [first_id]);
     assert_eq!(remaining.iter().map(|message| &message.id).collect::<Vec<_>>(), [&second_id]);
 }
+
+#[test]
+fn agy_hooks_smoke_test() {
+    let temp = TempDir::new().unwrap();
+    let (coordinator, repo) = runtime(&temp);
+    let runtime = HookRuntime::new(&coordinator);
+
+    let stop_output = runtime.ingest(
+        "agy",
+        &json!({
+            "conversationId": "agy-test-session",
+            "cwd": repo,
+            "hook_event_name": "Stop",
+            "stop_hook_active": false,
+            "last_assistant_message": "done"
+        }),
+    );
+    assert_eq!(stop_output, "{}");
+
+    let pre_output = runtime.ingest(
+        "agy",
+        &json!({
+            "conversationId": "agy-test-session",
+            "cwd": repo,
+            "hook_event_name": "PreToolUse",
+            "tool_name": "run_command",
+            "tool_input": {}
+        }),
+    );
+    assert_eq!(pre_output, "{}");
+
+    let post_output = runtime.ingest(
+        "agy",
+        &json!({
+            "conversationId": "agy-test-session",
+            "cwd": repo,
+            "hook_event_name": "PostToolUse",
+            "tool_name": "run_command",
+            "tool_input": {}
+        }),
+    );
+    assert_eq!(post_output, "");
+
+    let end_output = runtime.ingest(
+        "agy",
+        &json!({
+            "conversationId": "agy-test-session",
+            "cwd": repo,
+            "hook_event_name": "SessionEnd"
+        }),
+    );
+    assert_eq!(end_output, "{}");
+}

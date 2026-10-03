@@ -154,7 +154,7 @@ fn content_sha256(path: &Path) -> Option<String> {
 }
 
 fn turn_id() -> Option<String> {
-    ["AI_COORD_TURN_ID", "CODEX_TURN_ID", "CLAUDE_CODE_TURN_ID"]
+    ["AI_COORD_TURN_ID", "CODEX_TURN_ID", "CLAUDE_CODE_TURN_ID", "AGY_TURN_ID", "ANTIGRAVITY_TURN_ID"]
         .into_iter()
         .find_map(|name| std::env::var(name).ok().filter(|value| !value.is_empty()))
 }

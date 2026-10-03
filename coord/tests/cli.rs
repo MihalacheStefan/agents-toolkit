@@ -73,7 +73,10 @@ impl Fixture {
             .env("PATH", "/usr/bin:/bin")
             .env_remove("CODEX_SESSION_ID")
             .env_remove("CODEX_THREAD_ID")
-            .env_remove("CLAUDE_CODE_SESSION_ID");
+            .env_remove("CLAUDE_CODE_SESSION_ID")
+            .env_remove("ANTIGRAVITY_CONVERSATION_ID")
+            .env_remove("AGY_SESSION_ID")
+            .env_remove("ANTIGRAVITY_SESSION_ID");
     }
 
     fn output(&self, arguments: &[&str]) -> Output {
@@ -132,7 +135,10 @@ fn parser_and_semantic_usage_keep_distinct_exit_codes() {
 
     let help = fixture.output(&["--help"]);
     help.assert().success();
-    assert!(String::from_utf8_lossy(&help.stdout).contains("Coordinate parallel Codex, Claude Code, and Antigravity agents"));
+    assert!(
+        String::from_utf8_lossy(&help.stdout)
+            .contains("Coordinate parallel Codex, Claude Code, and Antigravity agents")
+    );
 
     let parser_error = fixture.output(&["wait", "--timeout-seconds", "0"]);
     parser_error.assert().failure().code(2);
@@ -1109,6 +1115,13 @@ fn link_and_check_use_only_the_configured_temporary_roots() {
         "error: hooks field must be an object; pass --force to replace it\n"
     );
 
+    let agy_settings = fixture._temporary.path().join("home/.gemini/config/hooks.json");
+    let path_agy = agy_settings.to_string_lossy();
+    let linked_agy = fixture.output(&["link", "agy", "--path", &path_agy]);
+    linked_agy.assert().success();
+    assert!(agy_settings.is_file());
+    assert!(String::from_utf8_lossy(&linked_agy.stdout).starts_with("UPDATED\tagy\t"));
+
     let check = fixture.output(&["check", "--json"]);
     check.assert().failure().code(2);
     let reports: Vec<Value> = serde_json::from_slice(&check.stdout).expect("check JSON");
@@ -1118,6 +1131,8 @@ fn link_and_check_use_only_the_configured_temporary_roots() {
     let codex_hooks = reports.iter().find(|report| report["component"] == "hooks:codex").expect("hook report");
     assert!(codex_hooks["error"].is_null());
     assert_eq!(codex_hooks["missing"].as_array().map(Vec::len), Some(7));
+    let agy_hooks = reports.iter().find(|report| report["component"] == "hooks:agy").expect("agy hook report");
+    assert!(agy_hooks["error"].is_null());
     assert!(reports.iter().any(|report| report["component"] == "hooks-trust:codex"));
 }
 

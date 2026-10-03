@@ -84,7 +84,10 @@ impl Fixture {
             .env("PATH", "/usr/bin:/bin")
             .env_remove("CODEX_SESSION_ID")
             .env_remove("CODEX_THREAD_ID")
-            .env_remove("CLAUDE_CODE_SESSION_ID");
+            .env_remove("CLAUDE_CODE_SESSION_ID")
+            .env_remove("ANTIGRAVITY_CONVERSATION_ID")
+            .env_remove("AGY_SESSION_ID")
+            .env_remove("ANTIGRAVITY_SESSION_ID");
     }
 
     fn output_as(&self, session_id: &str, arguments: &[&str]) -> Output {

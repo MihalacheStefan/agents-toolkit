@@ -341,7 +341,7 @@ mod tests {
         assert_eq!(record.macos_protected_home_paths, vec!["~/Library", "~/.Trash"]);
         assert_eq!(
             record.always_ignored_home_paths,
-            vec!["~/.agents", "~/.claude", "~/.codex", "~/.local/state/skills"]
+            vec!["~/.agents", "~/.claude", "~/.codex", "~/.gemini", "~/.local/state/skills"]
         );
         assert_eq!(
             record.broad_scan_cache_paths,

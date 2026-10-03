@@ -633,7 +633,8 @@ fn run_link(client: LinkClient, path: Option<&Path>, dry_run: bool, force: bool)
     let clients: &[HookConfigClient] = match client {
         LinkClient::Codex => &[HookConfigClient::Codex],
         LinkClient::Claude => &[HookConfigClient::Claude],
-        LinkClient::All => &[HookConfigClient::Codex, HookConfigClient::Claude],
+        LinkClient::Agy => &[HookConfigClient::Agy],
+        LinkClient::All => &[HookConfigClient::Codex, HookConfigClient::Claude, HookConfigClient::Agy],
     };
     for selected in clients {
         let requested = match selected {
@@ -677,7 +678,7 @@ fn run_check(as_json: bool) -> Result<u8> {
             "path": store.path().to_string_lossy(),
             "schema_version": SCHEMA_VERSION,
         }));
-        for selected in [HookConfigClient::Codex, HookConfigClient::Claude] {
+        for selected in [HookConfigClient::Codex, HookConfigClient::Claude, HookConfigClient::Agy] {
             let path = default_hook_path(selected);
             let report = inspect_hooks(selected, &path);
             degraded |= !report.ok;

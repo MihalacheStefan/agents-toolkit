@@ -11,7 +11,8 @@ pub(crate) const EXCLUDED_DIRECTORY_NAMES: &[&str] =
 pub(crate) const MACOS_PROTECTED_HOME_PATHS: &[&str] = &["Library", ".Trash"];
 
 /// Home paths that always hold agent state rather than user content.
-pub(crate) const ALWAYS_IGNORED_HOME_PATHS: &[&str] = &[".agents", ".claude", ".codex", ".local/state/skills"];
+pub(crate) const ALWAYS_IGNORED_HOME_PATHS: &[&str] =
+    &[".agents", ".claude", ".codex", ".gemini", ".local/state/skills"];
 
 /// Home paths that hold package-manager and toolchain caches, irrelevant to a broad skill scan.
 pub(crate) const BROAD_SCAN_CACHE_PATHS: &[&str] = &[

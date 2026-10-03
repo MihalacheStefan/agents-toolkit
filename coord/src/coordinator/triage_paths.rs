@@ -21,6 +21,7 @@ pub(super) fn safe_document_path(path: &str) -> bool {
                 ".agents" |
                     ".claude" |
                     ".codex" |
+                    ".gemini" |
                     "skills" |
                     "generated" |
                     "schema" |
@@ -59,6 +60,7 @@ mod tests {
             "NOTICE",
             "docs/generated/reference.md",
             "policies/release.md",
+            ".gemini/skills/foo.md",
             "src/lib.rs",
         ] {
             assert!(!safe_document_path(path), "expected protected path: {path}");

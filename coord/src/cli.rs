@@ -495,6 +495,7 @@ pub(crate) enum ClaudeClient {
 pub(crate) enum LinkClient {
     Codex,
     Claude,
+    Agy,
     All,
 }
 
@@ -502,7 +503,7 @@ pub(crate) enum LinkClient {
 pub(crate) struct LinkArgs {
     pub(crate) client: LinkClient,
 
-    /// Codex: active hooks file only; Claude: one alternate settings file.
+    /// Codex: active hooks file only; Claude/Agy: one alternate settings file.
     #[arg(long, value_name = "PATH")]
     pub(crate) path: Option<PathBuf>,
 

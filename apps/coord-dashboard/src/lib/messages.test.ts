@@ -94,6 +94,37 @@ describe("filterMessages", () => {
       }),
     ).toHaveLength(1);
   });
+
+  test("handles messages sent or received by agy client", () => {
+    const messages = [
+      message("agy-sender", 1, {
+        sender_client: "agy",
+        sender_session_id: "agy-sess",
+        text: "Need coordinate check",
+      }),
+      message("agy-recipient", 2, {
+        recipient_client: "agy",
+        recipient_session_id: "agy-recv",
+        text: "Scope acquired",
+      }),
+    ];
+
+    expect(
+      filterMessages(messages, {
+        query: "agy-sess",
+        repoRoot: null,
+        status: "all",
+      }).map(({ id }) => id),
+    ).toEqual(["agy-sender"]);
+
+    expect(
+      filterMessages(messages, {
+        query: "agy-recv",
+        repoRoot: null,
+        status: "all",
+      }).map(({ id }) => id),
+    ).toEqual(["agy-recipient"]);
+  });
 });
 
 describe("messageRepositories", () => {
