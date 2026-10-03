@@ -1685,3 +1685,30 @@ fn foreign_key_targets(connection: &Connection, table: &str) -> HashSet<(String,
         .collect::<rusqlite::Result<_>>()
         .unwrap()
 }
+
+#[test]
+fn agy_identities_round_trip_through_sessions_work_and_findings() {
+    let temporary = tempdir().unwrap();
+    let mut store = Store::open(temporary.path().join("state.db")).unwrap();
+    let agy = identity(Client::Agy, "agy-session");
+    store.upsert_session(&session_update(&agy, 1.0)).unwrap();
+    assert_eq!(store.session(&agy).unwrap().unwrap().identity, agy);
+
+    save_work(&mut store, &work_update(&agy)).unwrap();
+    assert_eq!(store.works().unwrap().len(), 1);
+
+    let added = store
+        .add_finding(&FindingAdd {
+            repo_root: "/repo".into(),
+            summary: "agy finding".into(),
+            kind: Some(FindingKind::Bug),
+            paths: vec!["src/a.rs".into()],
+            head_oid: None,
+            observations: vec![],
+            author: agy.clone(),
+            turn_id: Some("agy-turn".into()),
+            current: 2.0,
+        })
+        .unwrap();
+    assert!(!added.deduplicated);
+}
