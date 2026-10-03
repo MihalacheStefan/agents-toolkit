@@ -29,7 +29,7 @@ describe("findings", () => {
 
     expect(groups.map(({ repoRoot }) => repoRoot)).toEqual([
       "/Users/stefanmihalache/projects/agents-toolkit",
-      "/Users/stefanmihalache/projects/agents-skills",
+      "/Users/stefanmihalache/projects/agent-skills",
     ]);
     expect(groups[0]?.counts).toEqual({
       pending: 1,

@@ -64,8 +64,8 @@ function boolean(value: unknown, path: string): boolean {
 }
 
 function client(value: unknown, path: string): Client {
-  if (value !== "claude" && value !== "codex") {
-    throw new Error(`${path} must be claude or codex`);
+  if (value !== "claude" && value !== "codex" && value !== "agy") {
+    throw new Error(`${path} must be claude, codex, or agy`);
   }
   return value;
 }

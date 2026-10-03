@@ -1,6 +1,6 @@
 export type WorkState = "active" | "queued";
 export type WorkScopeKind = "exact" | "recursive";
-export type Client = "claude" | "codex";
+export type Client = "claude" | "codex" | "agy";
 export type SessionState =
   | "idle"
   | "in_flight"

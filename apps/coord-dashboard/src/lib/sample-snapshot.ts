@@ -93,8 +93,8 @@ export const sampleSnapshot = {
     {
       client: "codex",
       session_id: "019fcbc9-fc31-7772-9bc9-1c7af36775f5",
-      cwd: "/Users/stefanmihalache/projects/agents-skills",
-      repo_root: "/Users/stefanmihalache/projects/agents-skills",
+      cwd: "/Users/stefanmihalache/projects/agent-skills",
+      repo_root: "/Users/stefanmihalache/projects/agent-skills",
       state: "idle",
       callsign: "🧭 Chain Scout",
       name: null,
@@ -161,7 +161,7 @@ export const sampleSnapshot = {
           scopes: [{ path: "README.md", kind: "exact" }],
         },
         {
-          repo_root: "/Users/stefanmihalache/projects/agents-skills",
+          repo_root: "/Users/stefanmihalache/projects/agent-skills",
           blocked_reason: "held by evm-atlas-routing",
           scope_count: 1,
           scopes: [{ path: "README.md", kind: "exact" }],
@@ -179,7 +179,7 @@ export const sampleSnapshot = {
       updated_at: 1_785_833_360,
       claims: [
         {
-          repo_root: "/Users/stefanmihalache/projects/agents-skills",
+          repo_root: "/Users/stefanmihalache/projects/agent-skills",
           scope_count: 1,
           scopes: [{ path: "skills/evm-atlas", kind: "recursive" }],
         },
@@ -196,7 +196,7 @@ export const sampleSnapshot = {
       updated_at: 1_785_833_700,
       claims: [
         { repo_root: "/Users/stefanmihalache/projects/agents-toolkit", scope_count: 2 },
-        { repo_root: "/Users/stefanmihalache/projects/agents-skills", scope_count: 1 },
+        { repo_root: "/Users/stefanmihalache/projects/agent-skills", scope_count: 1 },
       ],
     },
     {
@@ -255,7 +255,7 @@ export const sampleSnapshot = {
     },
     {
       id: "5d8caf48",
-      repo_root: "/Users/stefanmihalache/projects/agents-skills",
+      repo_root: "/Users/stefanmihalache/projects/agent-skills",
       summary:
         "A terminated agent may remain visible until its provider inventory refreshes.",
       kind: "improvement",
@@ -328,7 +328,7 @@ export const sampleSnapshot = {
       recipient_client: "codex",
       recipient_session_id: "019fcbf9-d75c-7ba3-a481-18068ea954eb",
       recipient_callsign: "🦊 Patch Fox",
-      repo_root: "/Users/stefanmihalache/projects/agents-skills",
+      repo_root: "/Users/stefanmihalache/projects/agent-skills",
       text: "The provider-routing reference is the only shared generated input in this scope.",
       created_at: 1_785_833_360,
       acknowledged_at: null,

@@ -310,7 +310,7 @@ describe("parseSnapshot", () => {
     const providers = invalidClient.providers as Array<Record<string, unknown>>;
     providers[0] = { ...providers[0], client: "cursor" };
     expect(() => parseSnapshot(invalidClient)).toThrow(
-      "snapshot.providers[0].client must be claude or codex",
+      "snapshot.providers[0].client must be claude, codex, or agy",
     );
 
     const invalidState = structuredClone(sampleSnapshot) as Record<
@@ -343,6 +343,21 @@ describe("parseSnapshot", () => {
     expect(() => parseSnapshot(malformed)).toThrow(
       "snapshot.outside_scope.sessions must be non-negative",
     );
+  });
+
+  test("accepts agy provider, session, and message", () => {
+    const validAgy = structuredClone(sampleSnapshot) as Record<string, unknown>;
+    const providers = validAgy.providers as Array<Record<string, unknown>>;
+    providers.push({
+      client: "agy",
+      dropped: 0,
+      enabled: true,
+      error: null,
+      ok: true,
+      source: "environment",
+    });
+    const parsed = parseSnapshot(validAgy);
+    expect(parsed.providers.some((p) => p.client === "agy")).toBe(true);
   });
 });
 
