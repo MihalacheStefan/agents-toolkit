@@ -132,7 +132,7 @@ fn parser_and_semantic_usage_keep_distinct_exit_codes() {
 
     let help = fixture.output(&["--help"]);
     help.assert().success();
-    assert!(String::from_utf8_lossy(&help.stdout).contains("Coordinate parallel Codex and Claude Code agents"));
+    assert!(String::from_utf8_lossy(&help.stdout).contains("Coordinate parallel Codex, Claude Code, and Antigravity agents"));
 
     let parser_error = fixture.output(&["wait", "--timeout-seconds", "0"]);
     parser_error.assert().failure().code(2);

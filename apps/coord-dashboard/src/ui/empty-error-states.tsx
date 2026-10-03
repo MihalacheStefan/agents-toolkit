@@ -10,7 +10,7 @@ export function EmptySessions() {
       />
       <h2 className="mt-3 text-sm font-semibold">No live agent sessions</h2>
       <p className="mx-auto mt-1 max-w-md text-xs/5 text-muted">
-        New Codex and Claude Code sessions will appear here after their first
+        New Codex, Claude Code, and Antigravity sessions will appear here after their first
         coordination heartbeat.
       </p>
     </div>

@@ -25,6 +25,9 @@
   --color-claude-base: oklch(0.5 0.14 48);
   --color-claude-line-base: oklch(0.76 0.09 55);
   --color-claude-subtle-base: oklch(0.95 0.03 60);
+  --color-agy-base: oklch(0.48 0.16 295);
+  --color-agy-line-base: oklch(0.74 0.1 295);
+  --color-agy-subtle-base: oklch(0.95 0.025 295);
   --color-active-ink-base: oklch(0.4 0.12 155);
   --color-active-line-base: oklch(0.72 0.09 155);
   --color-active-subtle-base: oklch(0.94 0.025 155);
@@ -61,6 +64,9 @@
     --color-claude-base: oklch(0.75 0.13 55);
     --color-claude-line-base: oklch(0.5 0.09 55);
     --color-claude-subtle-base: oklch(0.28 0.045 55);
+    --color-agy-base: oklch(0.76 0.14 295);
+    --color-agy-line-base: oklch(0.5 0.09 295);
+    --color-agy-subtle-base: oklch(0.28 0.04 295);
     --color-active-ink-base: oklch(0.76 0.12 155);
     --color-active-line-base: oklch(0.46 0.08 155);
     --color-active-subtle-base: oklch(0.27 0.035 155);
@@ -97,6 +103,9 @@
   --color-claude: var(--color-claude-base);
   --color-claude-line: var(--color-claude-line-base);
   --color-claude-subtle: var(--color-claude-subtle-base);
+  --color-agy: var(--color-agy-base);
+  --color-agy-line: var(--color-agy-line-base);
+  --color-agy-subtle: var(--color-agy-subtle-base);
   --color-active-ink: var(--color-active-ink-base);
   --color-active-line: var(--color-active-line-base);
   --color-active-subtle: var(--color-active-subtle-base);

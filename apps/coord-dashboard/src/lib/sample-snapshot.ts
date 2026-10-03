@@ -27,6 +27,14 @@ export const sampleSnapshot = {
       dropped: 1,
       error: null,
     },
+    {
+      client: "agy",
+      ok: true,
+      source: "antigravity-cli",
+      enabled: true,
+      dropped: 0,
+      error: null,
+    },
   ],
   sessions: [
     {

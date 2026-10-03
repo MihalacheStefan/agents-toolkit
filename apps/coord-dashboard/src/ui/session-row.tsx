@@ -19,6 +19,7 @@ const clientBadge = tv({
     client: {
       codex: "border-codex-line bg-codex-subtle text-codex",
       claude: "border-claude-line bg-claude-subtle text-claude",
+      agy: "border-agy-line bg-agy-subtle text-agy",
       other: "border-line bg-surface-muted text-muted",
     },
   },
@@ -95,7 +96,9 @@ export function SessionRow({ row, repoRoot, now }: SessionRowProps) {
       values.indexOf(value) === index,
   );
   const client =
-    session.client === "codex" || session.client === "claude"
+    session.client === "codex" ||
+    session.client === "claude" ||
+    session.client === "agy"
       ? session.client
       : "other";
 
