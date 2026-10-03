@@ -127,7 +127,9 @@ impl Coordinator {
             return Ok(unique.into_iter().next());
         }
         if required {
-            Err(AppError::operational("could not resolve a unique agent session identity (Codex, Claude, or Antigravity)"))
+            Err(AppError::operational(
+                "could not resolve a unique agent session identity (Codex, Claude, or Antigravity)",
+            ))
         } else {
             Ok(None)
         }
