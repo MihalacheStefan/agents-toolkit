@@ -825,3 +825,92 @@ fn archive_validates_location_and_uses_desktop_origin_and_collision_suffix() {
     assert!(!missing.status.success());
     assert!(stderr(&missing).contains("cannot inspect handoff"));
 }
+
+#[test]
+fn create_supports_agy_client_launch_command_and_clipboard() {
+    let harness = Harness::new("agy-client");
+    let repository = harness.repo("repo", true);
+    let draft = harness.root.join("draft.md");
+    fs::write(&draft, "# Agy task body\n\n## Outcome\n\nCompleted with agy.\n").unwrap();
+    let skill = harness.root.join("skills/agy-handoff");
+    fs::create_dir_all(&skill).unwrap();
+    fs::write(skill.join("SKILL.md"), "# AGY handoff\n").unwrap();
+
+    let output = harness.command([
+        "create",
+        "--repo",
+        repository.to_str().unwrap(),
+        "--client",
+        "agy",
+        "--category",
+        "implementation",
+        "--task",
+        "support agy launch in handoffs",
+        "--draft",
+        draft.to_str().unwrap(),
+        "--before-work-skill",
+        skill.to_str().unwrap(),
+        "AGY_HANDOFF.md",
+    ]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let target = repository.join(".ai/task-handoffs/AGY_HANDOFF.md");
+    let prompt = format!(
+        "A previous agent prepared a implementation task handoff for support agy launch in handoffs under .ai/task-handoffs/AGY_HANDOFF.md. Read the handoff, then complete its requested implementation task. Follow its stated outcome, boundaries, authority constraints, and validation requirements. Before any task work, load and follow the skill defined at {}/SKILL.md.",
+        skill.display()
+    );
+    let expected_command = format!("(cd '{}' && agy -i '{}')", repository.display(), prompt.replace('\'', "'\\''"));
+    assert_eq!(
+        stdout(&output),
+        format!(
+            "handoff\t{}\nlaunch_repo\t{}\ncategory\timplementation\ncommand\t{expected_command}\n",
+            target.display(),
+            repository.display()
+        )
+    );
+    assert_eq!(fs::read_to_string(&harness.clipboard).unwrap(), expected_command);
+
+    // Also verify the alias "antigravity" works and produces the same agy command format.
+    let draft_alias = harness.root.join("draft_alias.md");
+    fs::write(&draft_alias, "# Antigravity alias\n\n## Outcome\n\nDone.\n").unwrap();
+    let alias_output = harness.command([
+        "create",
+        "--repo",
+        repository.to_str().unwrap(),
+        "--client",
+        "antigravity",
+        "--category",
+        "research",
+        "--task",
+        "test antigravity alias",
+        "--draft",
+        draft_alias.to_str().unwrap(),
+        "--no-clipboard",
+        "ANTIGRAVITY_ALIAS.md",
+    ]);
+    assert!(alias_output.status.success(), "{}", stderr(&alias_output));
+    let alias_report = stdout(&alias_output);
+    let alias_command = alias_report.lines().find_map(|line| line.strip_prefix("command\t")).unwrap();
+    assert!(alias_command.starts_with(&format!("(cd '{}' && agy -i ", repository.display())));
+    assert!(alias_command.ends_with(')'));
+}
+
+#[test]
+fn create_rejects_an_invalid_client() {
+    let harness = Harness::new("invalid-client");
+    let repository = harness.repo("repo", true);
+    let output = harness.command([
+        "create",
+        "--check",
+        "--repo",
+        repository.to_str().unwrap(),
+        "--client",
+        "invalid-client",
+        "--category",
+        "audit",
+        "--task",
+        "reject invalid client",
+        "INVALID_CLIENT.md",
+    ]);
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("invalid value 'invalid-client'"));
+}

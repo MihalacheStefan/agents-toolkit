@@ -17,7 +17,7 @@ use rustix::{
 };
 
 use crate::{
-    cli::CreateArgs,
+    cli::{Client, CreateArgs},
     error::{Error, Result},
     git,
     util::{home, shell_quote},
@@ -60,15 +60,15 @@ pub(crate) fn run(arguments: CreateArgs) -> Result<()> {
     let home_text = utf8_path(&home, "home directory")?;
     let category = arguments.category.to_string();
     let contents = compose(&category, launch_text, &repository_text, target_text, &arguments.task, &draft, home_text);
-    let command = build_command(
+    let prompt = build_prompt(
         &category,
         &arguments.task,
-        launch_text,
         target_text,
         &placement.relative,
         repositories.len() == 1,
         before_work_skill_text,
     );
+    let command = build_command(arguments.client, launch_text, &prompt);
 
     let mut publication = publish(&placement.base, &placement.target, &contents)?;
     if !arguments.no_clipboard {
@@ -317,10 +317,9 @@ fn shell_path(path: &str, home: &str) -> String {
     shell_quote(path)
 }
 
-fn build_command(
+fn build_prompt(
     category: &str,
     task: &str,
-    launch_repository: &str,
     target: &str,
     relative: &Path,
     single_repository: bool,
@@ -343,7 +342,14 @@ fn build_command(
     if let Some(skill) = before_work_skill {
         prompt.push_str(&format!(" Before any task work, load and follow the skill defined at {skill}/SKILL.md."));
     }
-    format!("codex -C {} {}", shell_quote(launch_repository), shell_quote(&prompt))
+    prompt
+}
+
+fn build_command(client: Client, launch_repository: &str, prompt: &str) -> String {
+    match client {
+        Client::Codex => format!("codex -C {} {}", shell_quote(launch_repository), shell_quote(prompt)),
+        Client::Agy => format!("(cd {} && agy -i {})", shell_quote(launch_repository), shell_quote(prompt)),
+    }
 }
 
 fn validate_physical_parents(base: &Path) -> Result<Option<OwnedFd>> {

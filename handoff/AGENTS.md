@@ -24,7 +24,7 @@ the aggregate Rust gate.
 
 ## CLI reference
 
-`ai-handoff` creates immutable task-handoff Markdown files, emits the exact Codex launch command for them, archives
+`ai-handoff` creates immutable task-handoff Markdown files, emits the exact agent launch command for them, archives
 completed handoffs without changing the rest of a document.
 
 ### Installation
@@ -46,7 +46,7 @@ cargo install --path . --locked --force --root "$HOME/.local"
 ```text
 ai-handoff create [--check] --repo <dir>... [--launch-repo <dir>]
                   --category <category> --task <task> [--draft <body.md>]
-                  [--before-work-skill <dir>] [--no-clipboard] <FILENAME.md>
+                  [--before-work-skill <dir>] [--no-clipboard] [--client <client>] <FILENAME.md>
 ai-handoff archive <handoff-path>
 ```
 
@@ -57,8 +57,9 @@ Publication descends through no-follow directory handles, is no-overwrite and at
 through `pbcopy` and verified through `pbpaste` unless `--no-clipboard` is passed. `--draft` is required except with
 `--check`, which validates placement without reading a draft or writing files. `--before-work-skill` requires an
 absolute directory with a readable `SKILL.md` and appends an instruction to load it before any task work to the
-generated Codex prompt. Generated handoff files abbreviate every occurrence of the active home directory as `~`;
-reported paths and launch commands remain absolute.
+generated prompt. `--client` selects the target agent launch command format (`codex` or `agy`; defaults to `codex`).
+Generated handoff files abbreviate every occurrence of the active home directory as `~`; reported paths and launch
+commands remain absolute.
 
 `archive` moves a handoff to `$HOME/.local/share/task-handoffs/archive/<origin>/`, adding a UTC timestamp when the
 name is occupied.

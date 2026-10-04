@@ -27,7 +27,7 @@ pub struct CreateArgs {
     #[arg(long, required = true, value_name = "DIR")]
     pub repo: Vec<PathBuf>,
 
-    /// Launch Codex in this involved repository.
+    /// Launch the agent in this involved repository.
     #[arg(long, value_name = "DIR")]
     pub launch_repo: Option<PathBuf>,
 
@@ -43,17 +43,38 @@ pub struct CreateArgs {
     #[arg(long, required_unless_present = "check", value_name = "BODY.md")]
     pub draft: Option<PathBuf>,
 
-    /// Load this skill before any task work in the generated Codex command.
+    /// Load this skill before any task work in the generated launch command.
     #[arg(long, value_name = "DIR")]
     pub before_work_skill: Option<PathBuf>,
 
-    /// Do not copy and verify the Codex command.
+    /// Do not copy and verify the launch command.
     #[arg(long)]
     pub no_clipboard: bool,
+
+    /// Target client for the launch command.
+    #[arg(long, value_enum, default_value = "codex")]
+    pub client: Client,
 
     /// Name the published handoff.
     #[arg(value_name = "FILENAME.md")]
     pub filename: String,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
+pub enum Client {
+    #[default]
+    Codex,
+    #[value(alias = "antigravity")]
+    Agy,
+}
+
+impl fmt::Display for Client {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Codex => "codex",
+            Self::Agy => "agy",
+        })
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
