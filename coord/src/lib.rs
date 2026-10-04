@@ -324,7 +324,7 @@ async fn execute(cli: Cli) -> Result<u8> {
             Ok(0)
         }
         Command::Hook(arguments) => {
-            run_hook(arguments.client);
+            run_hook(arguments.client, arguments.event.as_deref());
             Ok(0)
         }
         Command::Waker(_) => Ok(run_waker()),
@@ -560,14 +560,17 @@ fn finding_line(finding: &FindingSummary) -> String {
     .join("\t")
 }
 
-fn run_hook(client: HookClient) {
+fn run_hook(client: HookClient, event: Option<&str>) {
     let client = hook_client_name(client);
     let Some(payload) = read_hook_payload() else {
         return;
     };
     let output = match Coordinator::open_default() {
-        Ok(coordinator) => HookRuntime::new(&coordinator).ingest(client, &payload),
-        Err(_) => noop_hook_output(client, hook_event(&payload)).to_owned(),
+        Ok(coordinator) => match event {
+            Some(event) => HookRuntime::new(&coordinator).ingest_with_event(client, Some(event), &payload),
+            None => HookRuntime::new(&coordinator).ingest(client, &payload),
+        },
+        Err(_) => noop_hook_output(client, event.unwrap_or_else(|| hook_event(&payload))).to_owned(),
     };
     if !output.is_empty() {
         println!("{output}");

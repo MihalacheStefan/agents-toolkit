@@ -198,7 +198,7 @@ const CLAUDE_HOOK_SPECS: &[HookSpec] = &[
 const AGY_HOOK_SPECS: &[HookSpec] = &[
     HookSpec {
         event: "Stop",
-        command: "ai-coord hook agy",
+        command: "ai-coord hook agy Stop",
         matcher: None,
         timeout: Some(5),
         additional_context_limit: None,
@@ -208,7 +208,7 @@ const AGY_HOOK_SPECS: &[HookSpec] = &[
     },
     HookSpec {
         event: "PostToolUse",
-        command: "ai-coord hook agy",
+        command: "ai-coord hook agy PostToolUse",
         matcher: Some("*"),
         timeout: Some(5),
         additional_context_limit: None,
@@ -218,7 +218,7 @@ const AGY_HOOK_SPECS: &[HookSpec] = &[
     },
     HookSpec {
         event: "PreToolUse",
-        command: "ai-coord hook agy",
+        command: "ai-coord hook agy PreToolUse",
         matcher: Some("*"),
         timeout: Some(5),
         additional_context_limit: None,
@@ -228,7 +228,7 @@ const AGY_HOOK_SPECS: &[HookSpec] = &[
     },
     HookSpec {
         event: "SessionEnd",
-        command: "ai-coord hook agy",
+        command: "ai-coord hook agy SessionEnd",
         matcher: None,
         timeout: Some(5),
         additional_context_limit: None,

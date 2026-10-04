@@ -437,6 +437,8 @@ pub(crate) enum HookClient {
 #[derive(Debug, Args)]
 pub(crate) struct HookArgs {
     pub(crate) client: HookClient,
+    #[arg(value_name = "EVENT")]
+    pub(crate) event: Option<String>,
 }
 
 #[derive(Debug, Args)]

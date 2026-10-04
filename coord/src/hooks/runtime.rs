@@ -61,10 +61,15 @@ impl<'a> HookRuntime<'a> {
 
     /// Apply one supported lifecycle event and return only bounded, host-safe stdout.
     pub(crate) fn ingest(&self, client: &str, payload: &Value) -> String {
-        let event = payload
-            .get("hook_event_name")
-            .or_else(|| payload.get("hookEventName"))
-            .and_then(Value::as_str)
+        self.ingest_with_event(client, None, payload)
+    }
+
+    /// Apply one supported lifecycle event with an optional explicit event argument.
+    pub(crate) fn ingest_with_event(&self, client: &str, event_arg: Option<&str>, payload: &Value) -> String {
+        let event = event_arg
+            .filter(|value| !value.is_empty())
+            .or_else(|| payload.get("hook_event_name").or_else(|| payload.get("hookEventName")).and_then(Value::as_str))
+            .or_else(|| (client == "agy").then(|| infer_agy_event(payload)).flatten())
             .unwrap_or("unknown");
         let Some(client_kind) = parse_client(client) else {
             return noop_stdout(client, event);
@@ -292,6 +297,9 @@ impl<'a> HookRuntime<'a> {
             }
             if clean_nudge_selected && let Some(repo_root) = clean_nudge_root {
                 let _ = store.mark_clean_scope_nudged(&identity, &repo_root);
+            }
+            if client == Client::Agy {
+                return Ok(noop_stdout(client_name(client), event));
             }
             return Ok(json!({
                 "hookSpecificOutput": {
@@ -696,6 +704,28 @@ fn parse_client(client: &str) -> Option<Client> {
 }
 fn path_text(path: &Path) -> Result<String> {
     path.to_str().map(str::to_owned).ok_or_else(|| AppError::usage("path is not valid UTF-8"))
+}
+
+fn infer_agy_event(payload: &Value) -> Option<&'static str> {
+    if payload.get("toolCall").is_some() ||
+        payload.get("tool_call").is_some() ||
+        payload.get("tool_name").is_some() ||
+        payload.get("toolName").is_some()
+    {
+        Some("PreToolUse")
+    } else if payload.get("lastAssistantMessage").is_some() ||
+        payload.get("last_assistant_message").is_some() ||
+        payload.get("terminationReason").is_some() ||
+        payload.get("termination_reason").is_some() ||
+        payload.get("stopHookActive").is_some() ||
+        payload.get("stop_hook_active").is_some()
+    {
+        Some("Stop")
+    } else if payload.get("stepIdx").is_some() || payload.get("step_idx").is_some() {
+        Some("PostToolUse")
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]

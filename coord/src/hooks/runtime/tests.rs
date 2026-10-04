@@ -1774,49 +1774,110 @@ fn agy_hooks_smoke_test() {
     let (coordinator, repo) = runtime(&temp);
     let runtime = HookRuntime::new(&coordinator);
 
-    let stop_output = runtime.ingest(
+    // 1. Explicit event subcommands
+    let pre_output = runtime.ingest_with_event(
         "agy",
+        Some("PreToolUse"),
         &json!({
             "conversationId": "agy-test-session",
-            "cwd": repo,
-            "hook_event_name": "Stop",
-            "stop_hook_active": false,
-            "last_assistant_message": "done"
-        }),
-    );
-    assert_eq!(stop_output, "{}");
-
-    let pre_output = runtime.ingest(
-        "agy",
-        &json!({
-            "conversationId": "agy-test-session",
-            "cwd": repo,
-            "hook_event_name": "PreToolUse",
-            "tool_name": "run_command",
-            "tool_input": {}
+            "workspacePaths": [repo.to_str().unwrap()],
+            "toolCall": {
+                "name": "run_command",
+                "args": {"CommandLine": "ls"}
+            },
+            "stepIdx": 1
         }),
     );
     assert_eq!(pre_output, "{}");
 
-    let post_output = runtime.ingest(
+    // Verify session was created and callsign auto-assigned
+    let session = coordinator
+        .store()
+        .unwrap()
+        .session(&crate::domain::Identity { client: Client::Agy, session_id: "agy-test-session".to_owned() })
+        .unwrap()
+        .expect("session registered on tool hook");
+    assert_eq!(session.state, crate::domain::SessionState::Working);
+
+    let post_output = runtime.ingest_with_event(
         "agy",
+        Some("PostToolUse"),
         &json!({
             "conversationId": "agy-test-session",
-            "cwd": repo,
-            "hook_event_name": "PostToolUse",
-            "tool_name": "run_command",
-            "tool_input": {}
+            "workspacePaths": [repo.to_str().unwrap()],
+            "stepIdx": 1
         }),
     );
     assert_eq!(post_output, "");
 
-    let end_output = runtime.ingest(
+    let stop_output = runtime.ingest_with_event(
         "agy",
+        Some("Stop"),
         &json!({
             "conversationId": "agy-test-session",
-            "cwd": repo,
-            "hook_event_name": "SessionEnd"
+            "workspacePaths": [repo.to_str().unwrap()],
+            "stopHookActive": false,
+            "lastAssistantMessage": "done"
         }),
     );
-    assert_eq!(end_output, "{}");
+    assert_eq!(stop_output, "{}");
+
+    let session = coordinator
+        .store()
+        .unwrap()
+        .session(&crate::domain::Identity { client: Client::Agy, session_id: "agy-test-session".to_owned() })
+        .unwrap()
+        .unwrap();
+    assert_eq!(session.state, crate::domain::SessionState::Idle);
+
+    // 2. Fallback heuristic payload inference without hook_event_name or event CLI argument
+    let inferred_pre = runtime.ingest(
+        "agy",
+        &json!({
+            "conversationId": "agy-inferred-session",
+            "workspacePaths": [repo.to_str().unwrap()],
+            "toolCall": {
+                "name": "view_file"
+            },
+            "stepIdx": 1
+        }),
+    );
+    assert_eq!(inferred_pre, "{}");
+
+    let inferred_session = coordinator
+        .store()
+        .unwrap()
+        .session(&crate::domain::Identity { client: Client::Agy, session_id: "agy-inferred-session".to_owned() })
+        .unwrap()
+        .expect("inferred session registered");
+    assert_eq!(inferred_session.state, crate::domain::SessionState::Working);
+
+    let inferred_post = runtime.ingest(
+        "agy",
+        &json!({
+            "conversationId": "agy-inferred-session",
+            "workspacePaths": [repo.to_str().unwrap()],
+            "stepIdx": 1
+        }),
+    );
+    assert_eq!(inferred_post, "");
+
+    let inferred_stop = runtime.ingest(
+        "agy",
+        &json!({
+            "conversationId": "agy-inferred-session",
+            "workspacePaths": [repo.to_str().unwrap()],
+            "terminationReason": "model_stop",
+            "lastAssistantMessage": "all done"
+        }),
+    );
+    assert_eq!(inferred_stop, "{}");
+
+    let inferred_session = coordinator
+        .store()
+        .unwrap()
+        .session(&crate::domain::Identity { client: Client::Agy, session_id: "agy-inferred-session".to_owned() })
+        .unwrap()
+        .unwrap();
+    assert_eq!(inferred_session.state, crate::domain::SessionState::Idle);
 }

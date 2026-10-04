@@ -292,7 +292,7 @@ fn remove_stale_owned_commands(
                     let Some(command) = command else {
                         continue;
                     };
-                    if !owned.iter().any(|owned| command == owned) {
+                    if !owned.iter().any(|owned| command == owned || command.starts_with(&format!("{owned} "))) {
                         continue;
                     }
                     let matching = matching_spec(&event.key, &element.value.value(), &handler_value, specs);
