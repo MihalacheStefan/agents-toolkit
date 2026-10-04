@@ -124,7 +124,7 @@ impl<E: NotificationEnvironment> MacNotifier<E> {
     }
 
     fn materialize_icon(&self, client: Client) -> io::Result<NamedTempFile> {
-        let mut icon = NamedTempFile::new()?;
+        let mut icon = tempfile::Builder::new().prefix("ai-notify-").suffix(".png").tempfile()?;
         let bytes = match client {
             Client::Claude => CLAUDE_ICON,
             Client::Codex => CODEX_ICON,
@@ -350,5 +350,16 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(args[args.iter().position(|value| value == "-activate").unwrap() + 1], "example.app");
         assert_eq!(args[args.iter().position(|value| value == "-sound").unwrap() + 1], "Glass");
+    }
+
+    #[test]
+    fn materialized_icons_have_png_extension_and_valid_png_headers() {
+        let notifier = MacNotifier::new(AppConfig::default());
+        for client in [Client::Claude, Client::Codex, Client::Agy] {
+            let icon = notifier.materialize_icon(client).unwrap();
+            assert_eq!(icon.path().extension().and_then(|ext| ext.to_str()), Some("png"));
+            let bytes = std::fs::read(icon.path()).unwrap();
+            assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
+        }
     }
 }
