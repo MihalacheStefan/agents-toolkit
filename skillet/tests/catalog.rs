@@ -37,6 +37,29 @@ fn parses_only_leading_multiline_frontmatter_with_field_locations() {
 }
 
 #[test]
+fn install_targets_accept_the_publisher_agy_tokens() {
+    for (value, expected) in [
+        ("agy", InstallTargets::Agy),
+        ("antigravity", InstallTargets::Agy),
+        ("claude-code codex agy", InstallTargets::ClaudeCodeAndCodexAndAgy),
+        ("claude-code codex antigravity", InstallTargets::ClaudeCodeAndCodexAndAgy),
+    ] {
+        let temporary = TempDir::new().unwrap();
+        let skill = temporary.path().join("SKILL.md");
+        common::write(
+            &skill,
+            format!("---\nname: alpha\nmetadata:\n  install-targets: {value}\ndescription: Alpha.\n---\n# Alpha\n")
+                .as_bytes(),
+        );
+
+        let parsed = parse_skill_file(&skill);
+
+        assert!(parsed.diagnostics.is_empty(), "{value}: {:?}", parsed.diagnostics);
+        assert_eq!(parsed.frontmatter.unwrap().install_targets.unwrap().value, Some(expected), "{value}");
+    }
+}
+
+#[test]
 fn accepts_utf8_bom_and_crlf_frontmatter() {
     let temporary = TempDir::new().unwrap();
     let skill = temporary.path().join("SKILL.md");

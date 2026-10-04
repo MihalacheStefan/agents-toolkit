@@ -213,11 +213,13 @@ fn skill_kind(skill: &Skill, location: SkillLocation) -> SkillKind {
 }
 
 fn clients(skill: &Skill, kind: SkillKind) -> Vec<String> {
+    let names = |names: &[&str]| names.iter().map(|name| (*name).to_owned()).collect();
     if kind == SkillKind::Install {
         return match skill.exposure.scope {
-            ExposureScope::Claude => vec!["claude-code".to_owned()],
-            ExposureScope::Agents | ExposureScope::Codex => vec!["codex".to_owned()],
-            _ => vec!["claude-code".to_owned(), "codex".to_owned()],
+            ExposureScope::Claude => names(&["claude-code"]),
+            ExposureScope::Agents => names(&["codex", "agy"]),
+            ExposureScope::Codex => names(&["codex"]),
+            _ => names(&["claude-code", "codex", "agy"]),
         };
     }
     match skill
@@ -226,11 +228,11 @@ fn clients(skill: &Skill, kind: SkillKind) -> Vec<String> {
         .and_then(|frontmatter| frontmatter.install_targets.as_ref())
         .and_then(|targets| targets.value)
     {
-        Some(InstallTargets::ClaudeCode) => vec!["claude-code".to_owned()],
-        Some(InstallTargets::Codex) => vec!["codex".to_owned()],
-        Some(InstallTargets::ClaudeCodeAndCodex) | None => {
-            vec!["claude-code".to_owned(), "codex".to_owned()]
-        }
+        Some(InstallTargets::ClaudeCode) => names(&["claude-code"]),
+        Some(InstallTargets::Codex) => names(&["codex"]),
+        Some(InstallTargets::Agy) => names(&["agy"]),
+        Some(InstallTargets::ClaudeCodeAndCodex) => names(&["claude-code", "codex"]),
+        Some(InstallTargets::ClaudeCodeAndCodexAndAgy) | None => names(&["claude-code", "codex", "agy"]),
     }
 }
 

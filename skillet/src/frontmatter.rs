@@ -86,7 +86,9 @@ pub(crate) struct FrontmatterMappingEntry {
 pub enum InstallTargets {
     ClaudeCode,
     Codex,
+    Agy,
     ClaudeCodeAndCodex,
+    ClaudeCodeAndCodexAndAgy,
 }
 
 impl InstallTargets {
@@ -94,7 +96,9 @@ impl InstallTargets {
         match value {
             "claude-code" => Some(Self::ClaudeCode),
             "codex" => Some(Self::Codex),
+            "agy" | "antigravity" => Some(Self::Agy),
             "claude-code codex" => Some(Self::ClaudeCodeAndCodex),
+            "claude-code codex agy" | "claude-code codex antigravity" => Some(Self::ClaudeCodeAndCodexAndAgy),
             _ => None,
         }
     }

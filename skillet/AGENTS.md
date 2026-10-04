@@ -74,8 +74,11 @@ Doctor accepts this one top-level field union:
 - Repository extensions: `coordination` and `skill-dependencies`.
 
 Unknown top-level fields are errors. `metadata` must be a string-to-string mapping;
-`metadata.install-targets` additionally accepts only `claude-code`, `codex`, or
-`claude-code codex`. Tool, argument, and path fields accept a string or a list of strings, while
+`metadata.install-targets` additionally accepts only `claude-code`, `codex`, `agy` (alias
+`antigravity`), `claude-code codex`, or `claude-code codex agy` (alias `claude-code codex
+antigravity`), matching the `agent-skills` publisher. `ai-skillet map` reports `agy` for skills in
+`.agents/skills`, which Antigravity reads through `~/.gemini/config/skills`, and for catalog skills
+with no `install-targets`. Tool, argument, and path fields accept a string or a list of strings, while
 `hooks` must be a mapping. Claude Boolean fields accept `true`/`false`, `yes`/`no`, `on`/`off`,
 or `1`/`0`; other YAML shapes are not coerced. `context` accepts only `fork`, `effort` accepts
 `low`, `medium`, `high`, `xhigh`, or `max`, and `shell` accepts `bash` or `powershell`. `agent`

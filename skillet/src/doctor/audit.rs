@@ -301,7 +301,7 @@ fn check_typed_frontmatter(skill: &Skill, frontmatter: &Frontmatter, findings: &
             skill,
             targets.line,
             "INSTALL_TARGETS_INVALID",
-            "metadata.install-targets must be claude-code, codex, or claude-code codex",
+            "metadata.install-targets must be claude-code, codex, agy, antigravity, claude-code codex, or claude-code codex agy",
         ));
     }
 
