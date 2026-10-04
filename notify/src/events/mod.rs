@@ -9,6 +9,7 @@ use std::{
     path::{Component, Path},
 };
 
+use chrono::DateTime;
 use serde_json::{Map, Value};
 
 use crate::{
@@ -20,7 +21,8 @@ use crate::{
     },
     model::Client,
     notifier::{
-        NotificationSink, completion_notification, failure_notification, permission_notification, question_notification,
+        NotificationSink, client_failure_notification, client_question_notification, completion_notification,
+        failure_notification, permission_notification, question_notification,
     },
 };
 
@@ -66,6 +68,23 @@ pub fn validate_payload(payload: &Value) -> Result<()> {
         let session_id = session_id.as_str().ok_or_else(|| AppError::hook_payload("session_id must be a string"))?;
         if session_id.is_empty() || session_id.len() > 255 {
             return Err(AppError::hook_payload("Invalid session_id"));
+        }
+    }
+    if let Some(conversation_id) = object.get("conversationId") {
+        let conversation_id =
+            conversation_id.as_str().ok_or_else(|| AppError::hook_payload("conversationId must be a string"))?;
+        if conversation_id.is_empty() || conversation_id.len() > 255 {
+            return Err(AppError::hook_payload("Invalid conversationId"));
+        }
+    }
+    if let Some(workspace_paths) = object.get("workspacePaths") {
+        let paths =
+            workspace_paths.as_array().ok_or_else(|| AppError::hook_payload("workspacePaths must be an array"))?;
+        for path in paths {
+            let cwd = path.as_str().ok_or_else(|| AppError::hook_payload("workspace path must be a string"))?;
+            if Path::new(cwd).components().any(|component| component == Component::ParentDir) {
+                return Err(AppError::hook_payload("Path traversal detected in workspacePaths"));
+            }
         }
     }
     Ok(())
@@ -287,6 +306,201 @@ pub fn handle_codex_notify(payload: &Value, config: &AppConfig, notifier: &mut i
         let _ = notifier.deliver(&notification);
     }
     Ok(())
+}
+
+/// Handles Antigravity hook events (Stop, PreToolUse, etc.).
+pub fn handle_agy_hook(
+    payload: &Value,
+    state: &impl SessionState,
+    config: &AppConfig,
+    notifier: &mut impl NotificationSink,
+) -> Result<()> {
+    validate_payload(payload)?;
+    let object = object(payload)?;
+    let session_id = first_value(object, &["session_id", "conversationId"])
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| AppError::hook_payload("Missing session_id or conversationId in input"))?;
+
+    let cwd = first_value(object, &["cwd"])
+        .and_then(Value::as_str)
+        .or_else(|| {
+            object
+                .get("workspacePaths")
+                .and_then(Value::as_array)
+                .and_then(|paths| paths.first())
+                .and_then(Value::as_str)
+        })
+        .unwrap_or_default();
+
+    let event_name = string(object, "hook_event_name");
+    let is_tool_event = (!event_name.is_empty() && (event_name == "PreToolUse" || event_name == "PostToolUse")) ||
+        (event_name.is_empty() && (object.contains_key("toolCall") || object.contains_key("tool_name")));
+
+    if is_tool_event {
+        let tool_name = object
+            .get("toolCall")
+            .and_then(|tc| tc.get("name"))
+            .and_then(Value::as_str)
+            .unwrap_or_else(|| string(object, "tool_name"));
+
+        if matches!(tool_name, "ask_question" | "ask_user_question" | "AskUserQuestion") &&
+            should_send_permission_notification(config)
+        {
+            let tool_input = object.get("toolCall").and_then(|tc| tc.get("args")).or_else(|| object.get("tool_input"));
+            let task = state.active_prompt(session_id).unwrap_or_default();
+            let notification = client_question_notification(
+                Client::Agy,
+                project_name(cwd).as_str(),
+                &task,
+                &question_text(tool_input),
+            );
+            let _ = notifier.deliver(&notification);
+        }
+        return Ok(());
+    }
+
+    if event_name == "UserPromptSubmit" || event_name == "PreInvocation" {
+        let prompt = string(object, "prompt");
+        if !prompt.is_empty() && !is_internal_agent_notification(prompt) {
+            state.track_prompt(session_id, prompt, cwd);
+        }
+        return Ok(());
+    }
+
+    // Stop event
+    let error_msg = string(object, "error");
+    let term_reason = string(object, "terminationReason");
+    let is_error = (!error_msg.is_empty()) || term_reason.eq_ignore_ascii_case("error");
+
+    let mut prompt = state.active_prompt(session_id);
+    let mut last_assistant_message = string(object, "last_assistant_message").to_owned();
+    let mut duration_secs = state.job_info(session_id).duration_seconds.and_then(|v| u64::try_from(v).ok());
+
+    let transcript_path = string(object, "transcriptPath");
+    if !transcript_path.is_empty() {
+        let (extracted_prompt, extracted_msg, extracted_duration) = read_agy_transcript(Path::new(transcript_path));
+        if prompt.is_none() {
+            prompt = extracted_prompt;
+        }
+        if last_assistant_message.is_empty() &&
+            let Some(msg) = extracted_msg
+        {
+            last_assistant_message = msg;
+        }
+        if duration_secs.is_none() {
+            duration_secs = extracted_duration;
+        }
+    }
+
+    if prompt.is_none() {
+        let p = string(object, "prompt");
+        if !p.is_empty() {
+            prompt = Some(p.to_owned());
+        }
+    }
+
+    let prompt_str = prompt.as_deref().unwrap_or_default();
+    if state.active_prompt(session_id).is_none() && !prompt_str.is_empty() {
+        state.track_prompt(session_id, prompt_str, cwd);
+    }
+    state.mark_stopped(session_id);
+
+    if is_error {
+        if should_send_failure_notification(config) {
+            let failure_text = if !error_msg.is_empty() {
+                error_msg
+            } else if !last_assistant_message.is_empty() {
+                last_assistant_message.as_str()
+            } else {
+                "Antigravity error"
+            };
+            let notification = client_failure_notification(
+                Client::Agy,
+                project_name(cwd).as_str(),
+                prompt_str,
+                failure_text,
+                duration_secs.map(format_duration).as_deref(),
+            );
+            let _ = notifier.deliver(&notification);
+        }
+    } else if should_send_completion_notification(prompt_str, duration_secs.unwrap_or(0), config) {
+        let notification = completion_notification(
+            Client::Agy,
+            project_name(cwd).as_str(),
+            prompt_str,
+            &last_assistant_message,
+            duration_secs.map(format_duration).as_deref(),
+        );
+        let _ = notifier.deliver(&notification);
+    }
+
+    state.cleanup_if_due();
+    Ok(())
+}
+
+fn read_agy_transcript(transcript_path: &Path) -> (Option<String>, Option<String>, Option<u64>) {
+    let Ok(content) = std::fs::read_to_string(transcript_path) else {
+        return (None, None, None);
+    };
+    let mut prompt = None;
+    let mut prompt_time = None;
+    let mut last_assistant_message = None;
+    let mut response_time = None;
+
+    for line in content.lines().rev() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let Ok(step) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        let Some(step_obj) = step.as_object() else {
+            continue;
+        };
+
+        if last_assistant_message.is_none() && step_obj.get("type").and_then(Value::as_str) == Some("PLANNER_RESPONSE")
+        {
+            let text = step_obj.get("content").and_then(Value::as_str).unwrap_or_default().trim();
+            if !text.is_empty() {
+                last_assistant_message = Some(text.to_owned());
+                if let Some(created_at) = step_obj.get("created_at").and_then(Value::as_str) {
+                    response_time = DateTime::parse_from_rfc3339(created_at).ok();
+                }
+            }
+        }
+
+        if prompt.is_none() && step_obj.get("type").and_then(Value::as_str) == Some("USER_INPUT") {
+            let text = step_obj.get("content").and_then(Value::as_str).unwrap_or_default().trim();
+            if !text.is_empty() {
+                prompt = Some(extract_user_request(text));
+                if let Some(created_at) = step_obj.get("created_at").and_then(Value::as_str) {
+                    prompt_time = DateTime::parse_from_rfc3339(created_at).ok();
+                }
+            }
+        }
+
+        if prompt.is_some() && last_assistant_message.is_some() {
+            break;
+        }
+    }
+
+    let duration_seconds = match (prompt_time, response_time) {
+        (Some(start), Some(end)) if end >= start => u64::try_from((end - start).num_seconds()).ok(),
+        _ => None,
+    };
+
+    (prompt, last_assistant_message, duration_seconds)
+}
+
+fn extract_user_request(content: &str) -> String {
+    if let Some(start) = content.find("<USER_REQUEST>") {
+        let after_start = &content[start + "<USER_REQUEST>".len()..];
+        if let Some(end) = after_start.find("</USER_REQUEST>") {
+            return after_start[..end].trim().to_owned();
+        }
+    }
+    content.to_owned()
 }
 
 pub fn format_duration(seconds: u64) -> String {
@@ -723,5 +937,112 @@ mod tests {
         assert_eq!(format_duration(3661), "1h1m");
         assert_eq!(failure_message(json!({"error_details":" a\n b "}).as_object().unwrap()), "a b");
         assert_eq!(extract_message_text(Some(&json!([{"text":"a"}, {"content":"b"}]))), "a b");
+    }
+
+    #[test]
+    fn agy_stop_notifies_with_client_agy() {
+        let state = State { active: Some("build feature".into()), ..Default::default() };
+        let mut sink = Sink::default();
+        let payload = json!({
+            "conversationId": "agy-sess-1",
+            "cwd": "/tmp/project",
+            "last_assistant_message": "Feature is ready.",
+            "hook_event_name": "Stop"
+        });
+        let mut cfg = config();
+        cfg.notification.threshold_seconds = 0;
+        handle_agy_hook(&payload, &state, &cfg, &mut sink).unwrap();
+        assert_eq!(sink.0.borrow().len(), 1);
+        let notification = &sink.0.borrow()[0];
+        assert_eq!(notification.client, Client::Agy);
+        assert_eq!(notification.title, "project");
+        assert_eq!(notification.subtitle, "Antigravity completed");
+        assert_eq!(notification.message, "Task: build feature\nResult: Feature is ready.");
+        assert_eq!(*state.stopped.borrow(), ["agy-sess-1"]);
+    }
+
+    #[test]
+    fn agy_stop_error_emits_failure_notification() {
+        let state = State { active: Some("debug issue".into()), ..Default::default() };
+        let mut sink = Sink::default();
+        let payload = json!({
+            "conversationId": "agy-sess-err",
+            "cwd": "/tmp/project",
+            "error": "command failed with code 1",
+            "terminationReason": "error"
+        });
+        handle_agy_hook(&payload, &state, &config(), &mut sink).unwrap();
+        assert_eq!(sink.0.borrow().len(), 1);
+        let notification = &sink.0.borrow()[0];
+        assert_eq!(notification.client, Client::Agy);
+        assert_eq!(notification.title, "project");
+        assert_eq!(notification.subtitle, "Antigravity failed");
+        assert_eq!(notification.message, "Task: debug issue\nError: command failed with code 1");
+    }
+
+    #[test]
+    fn agy_ask_question_notifies_when_permissions_enabled() {
+        let state = State { active: Some("refactor".into()), ..Default::default() };
+        let mut sink = Sink::default();
+        let payload = json!({
+            "conversationId": "agy-sess-q",
+            "cwd": "/tmp/project",
+            "hook_event_name": "PreToolUse",
+            "toolCall": {
+                "name": "ask_question",
+                "args": {
+                    "questions": [{"question": "Should I proceed with delete?"}]
+                }
+            }
+        });
+        handle_agy_hook(&payload, &state, &config(), &mut sink).unwrap();
+        assert_eq!(sink.0.borrow().len(), 1);
+        let notification = &sink.0.borrow()[0];
+        assert_eq!(notification.client, Client::Agy);
+        assert_eq!(notification.title, "project");
+        assert_eq!(notification.subtitle, "Antigravity needs input");
+        assert_eq!(notification.message, "Task: refactor\nQuestion: Should I proceed with delete?");
+    }
+
+    #[test]
+    fn agy_stop_reads_transcript_when_fields_are_absent() {
+        let directory = tempfile::tempdir().unwrap();
+        let transcript = directory.path().join("transcript.jsonl");
+        let lines = [
+            json!({
+                "step_index": 1,
+                "type": "USER_INPUT",
+                "content": "<USER_REQUEST>\nDo the task\n</USER_REQUEST>",
+                "created_at": "2026-10-04T10:00:00Z"
+            })
+            .to_string(),
+            json!({
+                "step_index": 2,
+                "type": "PLANNER_RESPONSE",
+                "status": "DONE",
+                "content": "All done successfully.",
+                "created_at": "2026-10-04T10:00:15Z"
+            })
+            .to_string(),
+        ];
+        std::fs::write(&transcript, lines.join("\n")).unwrap();
+
+        let state = State::default();
+        let mut sink = Sink::default();
+        let payload = json!({
+            "conversationId": "agy-transcript-test",
+            "workspacePaths": [directory.path().to_str().unwrap()],
+            "transcriptPath": transcript.to_str().unwrap(),
+            "terminationReason": "NO_TOOL_CALL"
+        });
+        let mut cfg = config();
+        cfg.notification.threshold_seconds = 10;
+        handle_agy_hook(&payload, &state, &cfg, &mut sink).unwrap();
+
+        assert_eq!(sink.0.borrow().len(), 1);
+        let notification = &sink.0.borrow()[0];
+        assert_eq!(notification.client, Client::Agy);
+        assert_eq!(notification.subtitle, "Antigravity completed in 15s");
+        assert_eq!(notification.message, "Task: Do the task\nResult: All done successfully.");
     }
 }

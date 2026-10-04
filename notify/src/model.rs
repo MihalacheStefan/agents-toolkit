@@ -38,6 +38,7 @@ impl FromStr for NotificationMode {
 pub enum Client {
     Claude,
     Codex,
+    Agy,
 }
 
 impl Client {
@@ -45,6 +46,7 @@ impl Client {
         match self {
             Self::Claude => "Claude",
             Self::Codex => "Codex",
+            Self::Agy => "Antigravity",
         }
     }
 
@@ -52,6 +54,7 @@ impl Client {
         match self {
             Self::Claude => "claude",
             Self::Codex => "codex",
+            Self::Agy => "agy",
         }
     }
 }

@@ -358,7 +358,8 @@ fn check_treats_missing_as_diagnostic_and_parse_errors_as_failures() {
     let environment = TestEnv::new();
     environment.run(&["check"], "").success().stdout(
         predicate::str::contains("Claude Code hooks: MISSING")
-            .and(predicate::str::contains("Codex CLI notify: MISSING")),
+            .and(predicate::str::contains("Codex CLI notify: MISSING"))
+            .and(predicate::str::contains("Antigravity hooks: MISSING")),
     );
 
     let settings = environment.home.join(".claude/settings.json");
@@ -371,6 +372,50 @@ fn check_treats_missing_as_diagnostic_and_parse_errors_as_failures() {
     fs::create_dir_all(codex.parent().unwrap()).unwrap();
     fs::write(codex, "notify = [\"broken\"\n").unwrap();
     second.run(&["check"], "").code(1).stdout(predicate::str::contains("Codex CLI notify: ERROR"));
+
+    let third = TestEnv::new();
+    let agy = third.home.join(".gemini/config/hooks.json");
+    fs::create_dir_all(agy.parent().unwrap()).unwrap();
+    fs::write(agy, "{\n").unwrap();
+    third.run(&["check"], "").code(1).stdout(predicate::str::contains("Errors:"));
+}
+
+#[test]
+fn link_agy_supports_dry_run_updates_and_force() {
+    let environment = TestEnv::new();
+    let hooks_path = environment.home.join(".gemini/config/hooks.json");
+
+    environment
+        .run(&["link", "agy", "--path", hooks_path.to_str().unwrap(), "--dry-run"], "")
+        .success()
+        .stdout(predicate::str::contains("Would update hooks"));
+    assert!(!hooks_path.exists());
+
+    environment.run(&["link", "agy", "--path", hooks_path.to_str().unwrap()], "").success();
+    let contents = fs::read_to_string(&hooks_path).unwrap();
+    assert!(contents.contains("ai-notify event agy"));
+    assert!(contents.contains("ask_question"));
+
+    let malformed = environment.home.join(".gemini/bad.json");
+    fs::write(&malformed, r#"{"hooks":[]}"#).unwrap();
+    environment
+        .run(&["link", "agy", "--path", malformed.to_str().unwrap()], "")
+        .code(1)
+        .stderr(predicate::str::contains("hooks field must be an object"));
+}
+
+#[test]
+fn agy_event_path_runs_and_outputs_json() {
+    let environment = TestEnv::new();
+    let database = environment._root.path().join("state/sessions.db");
+    let log = environment._root.path().join("logs/ai-notify.log");
+    environment.write_runtime_config(&database, &log);
+
+    let stop = r#"{"conversationId":"agy-1","cwd":"/tmp/project","last_assistant_message":"finished","hook_event_name":"Stop"}"#;
+    environment.run(&["event", "agy"], stop).success().stdout("{}\n");
+
+    let question = r#"{"conversationId":"agy-1","cwd":"/tmp/project","hook_event_name":"PreToolUse","toolCall":{"name":"ask_question","args":{"questions":[{"question":"Ok?"}]}}}"#;
+    environment.run(&["event", "agy"], question).success().stdout("{}\n");
 }
 
 #[test]

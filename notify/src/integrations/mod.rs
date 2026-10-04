@@ -1,8 +1,13 @@
 //! Claude Code and Codex configuration integration.
 
+mod agy;
 mod claude;
 mod codex;
 
+pub use agy::{
+    AgyHooksReport, AgyHooksUpdate, HOOK_SPECS as AGY_HOOK_SPECS, default_hook_path as default_agy_hook_path,
+    ensure_agy_hooks, inspect_agy_hooks,
+};
 pub use claude::{
     ClaudeHooksReport, ClaudeHooksUpdate, HOOK_SPECS, HookSpec, ensure_claude_hooks, inspect_claude_hooks,
 };

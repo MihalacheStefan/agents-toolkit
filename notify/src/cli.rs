@@ -14,8 +14,8 @@ use crate::{
     error::{AppError, Result},
     events,
     integrations::{
-        CODEX_NOTIFY_COMMAND, IntegrationStatus, ensure_claude_hooks, inspect_claude_hooks, inspect_codex_notify,
-        set_codex_notify,
+        CODEX_NOTIFY_COMMAND, IntegrationStatus, default_agy_hook_path, ensure_agy_hooks, ensure_claude_hooks,
+        inspect_agy_hooks, inspect_claude_hooks, inspect_codex_notify, set_codex_notify,
     },
     logging,
     model::Client,
@@ -24,7 +24,7 @@ use crate::{
 };
 
 #[derive(Debug, Parser)]
-#[command(name = "ai-notify", version, about = "Notification hook for Claude Code and Codex CLI")]
+#[command(name = "ai-notify", version, about = "Notification hook for Claude Code, Codex CLI, and Antigravity")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
@@ -52,7 +52,7 @@ pub enum Command {
         #[command(subcommand)]
         command: LinkCommand,
     },
-    /// Check Claude Code and Codex CLI integrations.
+    /// Check Claude Code, Codex CLI, and Antigravity integrations.
     Check {
         /// Inspect a Codex profile overlay.
         #[arg(long)]
@@ -125,12 +125,26 @@ pub enum LinkCommand {
         #[arg(long)]
         force: bool,
     },
+    /// Install ai-notify hooks in Antigravity settings.
+    Agy {
+        /// Antigravity hooks.json path (defaults to ~/.gemini/config/hooks.json or $AGY_CONFIG_DIR/hooks.json).
+        #[arg(long)]
+        path: Option<PathBuf>,
+        /// Replace a conflicting non-list hook entry.
+        #[arg(long)]
+        force: bool,
+        /// Show the update without writing it.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Subcommand)]
 pub enum EventCommand {
     /// Handle native Codex UserPromptSubmit and Stop hooks from stdin.
     Codex,
+    /// Handle Antigravity Stop and tool hooks from stdin.
+    Agy,
     UserPromptSubmit,
     Stop,
     StopFailure,
@@ -370,15 +384,49 @@ fn run_link(command: LinkCommand) -> Result<()> {
             }
             Ok(())
         }
+        LinkCommand::Agy { path, force, dry_run } => {
+            let path = path.map_or_else(default_agy_hook_path, Ok)?;
+            let update = ensure_agy_hooks(&path, force, dry_run)?;
+            if update.changed {
+                if dry_run {
+                    println!("Would update hooks in {}", display_path(&update.path));
+                } else {
+                    println!("Updated hooks in {}", display_path(&update.path));
+                }
+            } else {
+                println!("Hooks already set in {}", display_path(&update.path));
+            }
+            if !update.added.is_empty() {
+                println!("Added events: {}", update.added.join(", "));
+            }
+            if !update.updated.is_empty() {
+                println!("Updated events: {}", update.updated.join(", "));
+            }
+            if !update.skipped.is_empty() {
+                println!("Skipped existing hooks:");
+                for (event, hook) in update.skipped {
+                    println!("  - {event}: {hook}");
+                }
+            }
+            Ok(())
+        }
     }
 }
 
 fn check_integrations(profile: Option<&str>) -> Result<()> {
     let claude_root = home_path(".claude")?;
     let codex_root = home_path(".codex")?;
+    let agy_root = env::var_os("AGY_CONFIG_DIR")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            env::var_os("HOME").filter(|home| !home.is_empty()).map(|home| PathBuf::from(home).join(".gemini/config"))
+        })
+        .ok_or_else(|| AppError::configuration("HOME or AGY_CONFIG_DIR must be set"))?;
     let project_root = env::current_dir()?;
     let claude = inspect_claude_hooks(&claude_root, &project_root);
     let codex = inspect_codex_notify(&codex_root, profile);
+    let agy = inspect_agy_hooks(&agy_root, &project_root);
 
     println!("Integration status:");
     println!("Claude Code hooks: {}", status_label(claude.status));
@@ -423,11 +471,31 @@ fn check_integrations(profile: Option<&str>) -> Result<()> {
         println!("  Error: {error}");
     }
 
+    println!("Antigravity hooks: {}", status_label(agy.status));
+    if !agy.paths.is_empty() {
+        println!("  Contributing configs:");
+        for path in &agy.paths {
+            println!("    - {}", display_path(path));
+        }
+    }
+    if !agy.missing_events.is_empty() {
+        println!("  Missing events: {}", agy.missing_events.join(", "));
+    }
+    if !agy.errors.is_empty() {
+        println!("  Errors:");
+        for (path, error) in &agy.errors {
+            println!("    - {}: {error}", display_path(path));
+        }
+    }
+
     if claude.has_errors() {
         return Err(AppError::integration("Claude Code settings contain parse or schema errors"));
     }
     if codex.has_error() {
         return Err(AppError::integration("Codex configuration inspection failed"));
+    }
+    if agy.has_errors() {
+        return Err(AppError::integration("Antigravity hooks configuration contains parse or schema errors"));
     }
     Ok(())
 }
@@ -472,6 +540,11 @@ fn run_event(event: EventCommand, config: &AppConfig) -> Result<()> {
     let mut notifier = MacNotifier::new(config.clone());
     match event {
         EventCommand::Codex => events::handle_codex_hook(&payload, &state, config, &mut notifier),
+        EventCommand::Agy => {
+            events::handle_agy_hook(&payload, &state, config, &mut notifier)?;
+            println!("{{}}");
+            Ok(())
+        }
         EventCommand::UserPromptSubmit => events::handle_user_prompt(&payload, &state),
         EventCommand::Stop => events::handle_stop(&payload, &state, config, &mut notifier),
         EventCommand::StopFailure => events::handle_stop_failure(&payload, &state, config, &mut notifier),

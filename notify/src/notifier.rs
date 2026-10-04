@@ -20,6 +20,7 @@ pub const DETAIL_EXCERPT_LENGTH: usize = 180;
 
 const CLAUDE_ICON: &[u8] = include_bytes!("../assets/claude-icon.png");
 const CODEX_ICON: &[u8] = include_bytes!("../assets/codex-icon.png");
+const AGY_ICON: &[u8] = include_bytes!("../assets/agy-icon.png");
 
 /// Boundary used by handlers so their tests do not depend on macOS.
 pub trait NotificationSink {
@@ -127,6 +128,7 @@ impl<E: NotificationEnvironment> MacNotifier<E> {
         let bytes = match client {
             Client::Claude => CLAUDE_ICON,
             Client::Codex => CODEX_ICON,
+            Client::Agy => AGY_ICON,
         };
         icon.write_all(bytes)?;
         icon.flush()?;
@@ -206,27 +208,41 @@ pub fn permission_notification(project: &str, task: &str, request: &str) -> Noti
     )
 }
 
-pub fn failure_notification(project: &str, task: &str, error: &str, duration: Option<&str>) -> Notification {
-    let mut subtitle = "Claude failed".to_owned();
+pub fn client_failure_notification(
+    client: Client,
+    project: &str,
+    task: &str,
+    error: &str,
+    duration: Option<&str>,
+) -> Notification {
+    let mut subtitle = format!("{} failed", client.display_name());
     if let Some(duration) = duration.filter(|value| !value.is_empty()) {
         subtitle.push_str(" after ");
         subtitle.push_str(duration);
     }
     Notification::new(
-        Client::Claude,
-        if project.is_empty() { "Claude Code" } else { project },
+        client,
+        if project.is_empty() { client.display_name() } else { project },
         subtitle,
         context_message(task, "Error", error),
     )
 }
 
-pub fn question_notification(project: &str, task: &str, question: &str) -> Notification {
+pub fn failure_notification(project: &str, task: &str, error: &str, duration: Option<&str>) -> Notification {
+    client_failure_notification(Client::Claude, project, task, error, duration)
+}
+
+pub fn client_question_notification(client: Client, project: &str, task: &str, question: &str) -> Notification {
     Notification::new(
-        Client::Claude,
-        if project.is_empty() { "Claude Code" } else { project },
-        "Claude needs input",
-        context_message(task, "Question", if question.is_empty() { "Claude is asking a question" } else { question }),
+        client,
+        if project.is_empty() { client.display_name() } else { project },
+        format!("{} needs input", client.display_name()),
+        context_message(task, "Question", if question.is_empty() { "Agent is asking a question" } else { question }),
     )
+}
+
+pub fn question_notification(project: &str, task: &str, question: &str) -> Notification {
+    client_question_notification(Client::Claude, project, task, question)
 }
 
 fn shell_quote(value: &str) -> String {
