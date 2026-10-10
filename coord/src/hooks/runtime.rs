@@ -8,12 +8,15 @@ use std::{
 use serde_json::{Value, json};
 
 use crate::{
-    coordinator::{Coordinator, normalize_callsign},
+    coordinator::{Coordinator, assign_auto_callsign},
     domain::{Client, Identity, Outcome, SessionState, WorkState, client_name, sanitize},
     error::{AppError, Result},
     host::{git_dirty_paths, git_root, host_process_reference, normalize_repo_path, relevant_dirty},
     state::SessionUpdate,
 };
+
+#[cfg(test)]
+pub(crate) use crate::coordinator::generated_callsign;
 
 use super::specs::{Client as HookClient, hook_specs};
 
@@ -25,10 +28,6 @@ const RECOMMENDATION_CHECKPOINT: &str = "Work recommendations need review; run `
 const WAKER_TIMEOUT_SECONDS: u64 = 3_480;
 const WAKER_POLL_SECONDS: f64 = 1.0;
 const PERMISSION_MODES: &[&str] = &["default", "plan", "acceptEdits", "dontAsk", "bypassPermissions"];
-const CALLSIGN_ADJECTIVES: &[&str] = &["Brisk", "Clever", "Daring", "Gentle", "Keen", "Lucky", "Mighty", "Swift"];
-const CALLSIGN_NOUNS: &[&str] = &["Badger", "Comet", "Falcon", "Lynx", "Otter", "Panda", "Raven", "Tiger"];
-const CALLSIGN_EMOJI: &[&str] = &["🦊", "🐙", "🦀", "🐝", "🦉", "🐬", "🦄", "🦜"];
-const AUTO_CALLSIGN_RETRIES: usize = 32;
 
 trait LifecycleTriageScheduler: Sync {
     fn schedule(&self, coordinator: &Coordinator, cwd: &Path, identity: &Identity);
@@ -207,7 +206,7 @@ impl<'a> HookRuntime<'a> {
                 store.upsert_session(&update)?
             }
         };
-        if event == "SessionStart" && session.callsign.is_none() {
+        if session.callsign.is_none() {
             assign_auto_callsign(&mut store, &identity);
         }
 
@@ -543,31 +542,6 @@ fn append_presence_fragment(context: &mut String, fragment: &str) -> bool {
     } else {
         false
     }
-}
-
-fn assign_auto_callsign(store: &mut crate::state::Store, identity: &Identity) {
-    for attempt in 0..AUTO_CALLSIGN_RETRIES {
-        let callsign = normalize_callsign(&generated_callsign(identity, attempt))
-            .expect("built-in auto-callsigns satisfy callsign validation");
-        if store.set_session_callsign(identity, &callsign).is_ok() {
-            return;
-        }
-    }
-}
-
-fn generated_callsign(identity: &Identity, attempt: usize) -> String {
-    let seed = identity
-        .session_id
-        .bytes()
-        .chain(client_name(identity.client).bytes())
-        .fold(14_695_981_039_346_656_037_u64, |hash, byte| (hash ^ u64::from(byte)).wrapping_mul(1_099_511_628_211));
-    let combinations = CALLSIGN_ADJECTIVES.len() * CALLSIGN_NOUNS.len() * CALLSIGN_EMOJI.len();
-    let index = (seed as usize).wrapping_add(attempt) % combinations;
-    let emoji = CALLSIGN_EMOJI[index % CALLSIGN_EMOJI.len()];
-    let noun = CALLSIGN_NOUNS[(index / CALLSIGN_EMOJI.len()) % CALLSIGN_NOUNS.len()];
-    let adjective =
-        CALLSIGN_ADJECTIVES[(index / (CALLSIGN_EMOJI.len() * CALLSIGN_NOUNS.len())) % CALLSIGN_ADJECTIVES.len()];
-    format!("{emoji} {adjective} {noun}")
 }
 
 /// Classify this event's touched paths against active work claims in `repo_root`

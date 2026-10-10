@@ -26,7 +26,7 @@ use crate::{
     domain::{
         Identity, InventoryResult, OutsideScopeV2, ProcessProbe, ProviderReport, SessionState, SnapshotDelegateV2,
         SnapshotDraftClaimV2, SnapshotDraftV2, SnapshotHandoffV4, SnapshotScopeKindV2, SnapshotScopeV2,
-        SnapshotSessionV2, SnapshotV2, SnapshotWorkClaimV2, SnapshotWorkV2, WorkState, sanitize,
+        SnapshotSessionV2, SnapshotV2, SnapshotWorkClaimV2, SnapshotWorkV2, WorkState, client_name, sanitize,
     },
     error::{AppError, Result},
     host::{
@@ -45,6 +45,11 @@ const FULL_REFRESH_SECONDS: f64 = 20.0;
 const MAX_CALLSIGN_CODEPOINTS: usize = 40;
 const MAX_LABEL_CHARS: usize = 80;
 const MAX_MESSAGE_CHARS: usize = 240;
+pub(crate) const CALLSIGN_ADJECTIVES: &[&str] =
+    &["Brisk", "Clever", "Daring", "Gentle", "Keen", "Lucky", "Mighty", "Swift"];
+pub(crate) const CALLSIGN_NOUNS: &[&str] = &["Badger", "Comet", "Falcon", "Lynx", "Otter", "Panda", "Raven", "Tiger"];
+pub(crate) const CALLSIGN_EMOJI: &[&str] = &["🦊", "🐙", "🦀", "🐝", "🦉", "🐬", "🦄", "🦜"];
+pub(crate) const AUTO_CALLSIGN_RETRIES: usize = 32;
 
 pub(crate) trait Clock: Send + Sync {
     fn wall(&self) -> f64;
@@ -285,7 +290,11 @@ impl Coordinator {
             started_at: existing.as_ref().map(|row| row.started_at),
             current: self.clock.wall(),
         };
+        let had_callsign = existing.as_ref().is_some_and(|row| row.callsign.is_some());
         store.upsert_session(&update)?;
+        if !had_callsign {
+            assign_auto_callsign(store, identity);
+        }
         Ok(())
     }
 
@@ -675,6 +684,32 @@ pub(crate) fn normalize_callsign(text: &str) -> Result<String> {
     }
     Ok(value)
 }
+
+pub(crate) fn assign_auto_callsign(store: &mut Store, identity: &Identity) {
+    for attempt in 0..AUTO_CALLSIGN_RETRIES {
+        let callsign = normalize_callsign(&generated_callsign(identity, attempt))
+            .expect("built-in auto-callsigns satisfy callsign validation");
+        if store.set_session_callsign(identity, &callsign).is_ok() {
+            return;
+        }
+    }
+}
+
+pub(crate) fn generated_callsign(identity: &Identity, attempt: usize) -> String {
+    let seed = identity
+        .session_id
+        .bytes()
+        .chain(client_name(identity.client).bytes())
+        .fold(14_695_981_039_346_656_037_u64, |hash, byte| (hash ^ u64::from(byte)).wrapping_mul(1_099_511_628_211));
+    let combinations = CALLSIGN_ADJECTIVES.len() * CALLSIGN_NOUNS.len() * CALLSIGN_EMOJI.len();
+    let index = (seed as usize).wrapping_add(attempt) % combinations;
+    let emoji = CALLSIGN_EMOJI[index % CALLSIGN_EMOJI.len()];
+    let noun = CALLSIGN_NOUNS[(index / CALLSIGN_EMOJI.len()) % CALLSIGN_NOUNS.len()];
+    let adjective =
+        CALLSIGN_ADJECTIVES[(index / (CALLSIGN_EMOJI.len() * CALLSIGN_NOUNS.len())) % CALLSIGN_ADJECTIVES.len()];
+    format!("{emoji} {adjective} {noun}")
+}
+
 fn callsign_key(text: &str) -> String {
     text.split_whitespace()
         .collect::<Vec<_>>()

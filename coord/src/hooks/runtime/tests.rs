@@ -10,7 +10,7 @@ use tempfile::TempDir;
 
 use super::*;
 use crate::{
-    coordinator::{Clock, InventoryObservation, ProviderInventory, last_codex_hook_error},
+    coordinator::{Clock, InventoryObservation, ProviderInventory, last_codex_hook_error, normalize_callsign},
     domain::{InventoryResult, ProcessFingerprint, ProcessLiveness, ProcessProbe, ProviderReport},
     host::{CodexHookLedgerEvidence, codex_provider_report},
     state::{FindingAdd, RecommendationAction, SessionUpdate, Store},
@@ -1798,6 +1798,7 @@ fn agy_hooks_smoke_test() {
         .unwrap()
         .expect("session registered on tool hook");
     assert_eq!(session.state, crate::domain::SessionState::Working);
+    assert!(session.callsign.is_some(), "callsign auto-assigned for agy session on tool hook");
 
     let post_output = runtime.ingest_with_event(
         "agy",

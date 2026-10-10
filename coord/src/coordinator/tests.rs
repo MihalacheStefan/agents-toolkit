@@ -1130,7 +1130,7 @@ fn confirmed_death_releases_residual_ownership_recorded_by_done() {
     *clock.value.lock().unwrap() = 100.0 + DIRT_HOLD_SECONDS;
     let blocked = coordinator.start_for(successor.clone(), "successor", &requested, &[], &roots[0]).unwrap();
     assert_eq!(blocked.kind, OutcomeKind::Blocked);
-    assert_eq!(blocked.holders, ["codex/holder"]);
+    assert_eq!(blocked.holders, ["🦀 Daring Falcon"]);
 
     probe.set(140, ProcessLiveness::Dead);
     let ready = coordinator.start_for(successor.clone(), "successor", &requested, &[], &roots[0]).unwrap();
@@ -1447,7 +1447,7 @@ fn partially_blocked_bundle_leaves_the_idle_holder_unyielded() {
         .start_bundle_for(requester.clone(), "requester", &files(&roots, &["src/lib.rs", "src/lib.rs"]), &[], &roots[0])
         .unwrap();
     assert_eq!(outcome.kind, OutcomeKind::Blocked);
-    assert_eq!(outcome.holders, ["codex/idle", "codex/busy"]);
+    assert_eq!(outcome.holders, ["🦄 Clever Raven", "🦜 Lucky Falcon"]);
 
     let store = coordinator.store().unwrap();
     let queued = store.work(&requester).unwrap().unwrap();
@@ -1545,4 +1545,21 @@ fn indeterminate_liveness_holders_block_overlap_without_degrading_coverage() {
         coordinator.start_for(unanchored.clone(), "retry", &[PathBuf::from("new.rs")], &[], &roots[0]).unwrap();
     assert_eq!((outcome.kind, outcome.detail.as_str()), (OutcomeKind::Unknown, "coverage"));
     assert!(coordinator.store().unwrap().session(&unprobed).unwrap().is_some());
+}
+
+#[test]
+fn start_auto_assigns_callsign_when_session_created_without_one() {
+    let uncallsigned = identity("uncallsigned");
+    let (temp, roots) = repos(1);
+    let store = Store::open(temp.path().join("state.db")).unwrap();
+    let probe = Arc::new(FakeProbe::default());
+    probe.set(300, ProcessLiveness::Alive);
+    let coordinator = coordinator_with_coverage(store, probe, Arc::new(AtomicUsize::new(0)), true);
+
+    let outcome =
+        coordinator.start_for(uncallsigned.clone(), "work label", &[PathBuf::from("file.rs")], &[], &roots[0]).unwrap();
+    assert_eq!(outcome.kind, OutcomeKind::Ready);
+
+    let session = coordinator.store().unwrap().session(&uncallsigned).unwrap().unwrap();
+    assert!(session.callsign.is_some(), "session created via start_for receives auto-callsign");
 }
