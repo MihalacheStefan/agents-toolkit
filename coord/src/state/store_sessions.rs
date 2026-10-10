@@ -3,7 +3,7 @@ use unicode_casefold::UnicodeCaseFold;
 use unicode_normalization::UnicodeNormalization;
 
 use crate::{
-    domain::{Identity, ProcessFingerprint},
+    domain::{Identity, ProcessFingerprint, SessionState},
     error::{AppError, Result},
 };
 
@@ -181,6 +181,10 @@ impl Store {
         })
     }
 
+    pub(crate) fn set_session_state(&mut self, identity: &Identity, state: SessionState) -> Result<bool> {
+        self.immediate(|transaction| set_session_state(transaction, identity, state))
+    }
+
     /// End a session from an authoritative SessionEnd event.
     pub(crate) fn end_session(&mut self, identity: &Identity) -> Result<()> {
         self.immediate(|transaction| {
@@ -352,6 +356,22 @@ pub(super) fn end_session_if_revision(
         bump_generation(transaction)?;
     }
     Ok(removed)
+}
+
+pub(super) fn set_session_state(
+    transaction: &Transaction<'_>,
+    identity: &Identity,
+    state: SessionState,
+) -> Result<bool> {
+    let updated = transaction.execute(
+        "UPDATE sessions SET state = ?1, revision = revision + 1
+         WHERE client = ?2 AND session_id = ?3 AND state != ?1",
+        params![session_state_name(state), client_name(identity.client), identity.session_id],
+    )? > 0;
+    if updated {
+        bump_generation(transaction)?;
+    }
+    Ok(updated)
 }
 
 fn remove_session(transaction: &rusqlite::Transaction<'_>, identity: &Identity) -> Result<()> {

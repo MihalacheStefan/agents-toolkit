@@ -226,16 +226,6 @@ const AGY_HOOK_SPECS: &[HookSpec] = &[
         async_: None,
         async_rewake: None,
     },
-    HookSpec {
-        event: "SessionEnd",
-        command: "ai-coord hook agy SessionEnd",
-        matcher: None,
-        timeout: Some(5),
-        additional_context_limit: None,
-        if_filter: None,
-        async_: None,
-        async_rewake: None,
-    },
 ];
 
 pub(crate) const fn hook_specs(client: Client) -> &'static [HookSpec] {

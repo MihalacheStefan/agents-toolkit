@@ -114,11 +114,12 @@ pub(crate) fn link_hooks(client: Client, path: &Path, dry_run: bool, force: bool
     for spec in hook_specs(client) {
         let hooks = hooks_object(&document, client);
         let event = document.member(hooks, spec.event).cloned();
-        if event.as_ref().is_some_and(|event| spec_present(&event.value.value(), spec)) {
+        if event.as_ref().is_some_and(|event| spec_present(&event.value.value(), spec, client)) {
             continue;
         }
+        let element = spec_element(client, spec);
         match event {
-            None => document = document.insert_member(hooks, spec.event, &Value::Array(vec![group(spec)]))?,
+            None => document = document.insert_member(hooks, spec.event, &Value::Array(vec![element]))?,
             Some(event) => {
                 if event.value.array().is_none() {
                     if !force {
@@ -129,7 +130,7 @@ pub(crate) fn link_hooks(client: Client, path: &Path, dry_run: bool, force: bool
                 let hooks = hooks_object(&document, client);
                 let event = document.member(hooks, spec.event).expect("event was inserted or replaced");
                 let array = event.value.array().expect("event is an array");
-                document = document.append_element(array, &group(spec))?;
+                document = document.append_element(array, &element)?;
             }
         }
     }
@@ -194,7 +195,7 @@ pub(crate) fn inspect_hooks(client: Client, path: &Path) -> HooksCheck {
     let missing: Vec<_> = hook_specs(client)
         .iter()
         .filter(|spec| {
-            !document.member(hooks, spec.event).is_some_and(|event| spec_present(&event.value.value(), spec))
+            !document.member(hooks, spec.event).is_some_and(|event| spec_present(&event.value.value(), spec, client))
         })
         .map(|spec| spec.event.to_owned())
         .collect();
@@ -246,11 +247,11 @@ fn write_config(path: &Path, text: &str) -> Result<(), ConfigError> {
     Ok(())
 }
 
-fn group(spec: &HookSpec) -> Value {
-    let mut group = Map::new();
-    if let Some(matcher) = spec.matcher {
-        group.insert("matcher".to_owned(), Value::String(matcher.to_owned()));
-    }
+fn is_flat_event(client: Client, event: &str) -> bool {
+    client == Client::Agy && !matches!(event, "PreToolUse" | "PostToolUse")
+}
+
+fn handler(spec: &HookSpec) -> Map<String, Value> {
     let mut handler = Map::from_iter([
         ("type".to_owned(), Value::String("command".to_owned())),
         ("command".to_owned(), Value::String(spec.command.to_owned())),
@@ -270,8 +271,20 @@ fn group(spec: &HookSpec) -> Value {
     if let Some(rewake) = spec.async_rewake {
         handler.insert("asyncRewake".to_owned(), Value::Bool(rewake));
     }
-    group.insert("hooks".to_owned(), Value::Array(vec![Value::Object(handler)]));
+    handler
+}
+
+fn group(spec: &HookSpec) -> Value {
+    let mut group = Map::new();
+    if let Some(matcher) = spec.matcher {
+        group.insert("matcher".to_owned(), Value::String(matcher.to_owned()));
+    }
+    group.insert("hooks".to_owned(), Value::Array(vec![Value::Object(handler(spec))]));
     Value::Object(group)
+}
+
+fn spec_element(client: Client, spec: &HookSpec) -> Value {
+    if is_flat_event(client, spec.event) { Value::Object(handler(spec)) } else { group(spec) }
 }
 
 fn remove_stale_owned_commands(
@@ -288,15 +301,34 @@ fn remove_stale_owned_commands(
             let Some(groups) = event.value.array() else {
                 continue;
             };
+            let flat_event = is_flat_event(client, &event.key);
             for (group_index, element) in groups.elements.iter().enumerate() {
                 let Some(group) = element.value.object() else {
                     continue;
                 };
-                let Some(handlers) = document.member(group, "hooks").and_then(|member| member.value.array()) else {
-                    continue;
-                };
-                for (handler_index, handler) in handlers.elements.iter().enumerate() {
-                    let handler_value = handler.value.value();
+                if let Some(handlers) = document.member(group, "hooks").and_then(|member| member.value.array()) {
+                    for (handler_index, handler) in handlers.elements.iter().enumerate() {
+                        let handler_value = handler.value.value();
+                        let command = handler_value.get("command").and_then(Value::as_str);
+                        let Some(command) = command else {
+                            continue;
+                        };
+                        if !owned.iter().any(|owned| command == owned || command.starts_with(&format!("{owned} "))) {
+                            continue;
+                        }
+                        if !flat_event {
+                            let matching = matching_spec(&event.key, &element.value.value(), &handler_value, specs);
+                            if matching.is_some_and(|spec| preserved.insert(spec)) {
+                                continue;
+                            }
+                        }
+                        document = document.remove_element(handlers, handler_index)?;
+                        document = prune_empty_group(document, client, &event.key, group_index)?;
+                        removed = true;
+                        break 'events;
+                    }
+                } else {
+                    let handler_value = element.value.value();
                     let command = handler_value.get("command").and_then(Value::as_str);
                     let Some(command) = command else {
                         continue;
@@ -304,12 +336,14 @@ fn remove_stale_owned_commands(
                     if !owned.iter().any(|owned| command == owned || command.starts_with(&format!("{owned} "))) {
                         continue;
                     }
-                    let matching = matching_spec(&event.key, &element.value.value(), &handler_value, specs);
-                    if matching.is_some_and(|spec| preserved.insert(spec)) {
-                        continue;
+                    if flat_event {
+                        let matching = matching_spec(&event.key, &Value::Null, &handler_value, specs);
+                        if matching.is_some_and(|spec| preserved.insert(spec)) {
+                            continue;
+                        }
                     }
-                    document = document.remove_element(handlers, handler_index)?;
-                    document = prune_empty_group(document, client, &event.key, group_index)?;
+                    document = document.remove_element(groups, group_index)?;
+                    document = prune_empty_event(document, client, &event.key)?;
                     removed = true;
                     break 'events;
                 }
@@ -342,11 +376,20 @@ fn prune_empty_group(
         return Ok(document);
     }
     document = document.remove_element(array, group_index)?;
+    prune_empty_event(document, client, event_name)
+}
+
+fn prune_empty_event(
+    mut document: JsoncDocument,
+    client: Client,
+    event_name: &str,
+) -> Result<JsoncDocument, ConfigError> {
     let hooks = hooks_object(&document, client);
-    let event_index = hooks.members.iter().position(|member| member.key == event_name).expect("event still exists");
-    let event = &hooks.members[event_index];
-    if event.value.array().is_some_and(|array| array.elements.is_empty()) {
-        document = document.remove_member(hooks, event_index)?;
+    if let Some(event_index) = hooks.members.iter().position(|member| member.key == event_name) {
+        let event = &hooks.members[event_index];
+        if event.value.array().is_some_and(|array| array.elements.is_empty()) {
+            document = document.remove_member(hooks, event_index)?;
+        }
     }
     Ok(document)
 }
@@ -365,13 +408,18 @@ fn matching_spec<'a>(event: &str, group: &Value, handler: &Value, specs: &'a [Ho
     specs.iter().find(|spec| spec.event == event && handler_matches(group, handler, spec))
 }
 
-fn spec_present(value: &Value, spec: &HookSpec) -> bool {
-    value.as_array().is_some_and(|groups| {
-        groups.iter().any(|group| {
-            group
-                .get("hooks")
-                .and_then(Value::as_array)
-                .is_some_and(|handlers| handlers.iter().any(|handler| handler_matches(group, handler, spec)))
+fn spec_present(value: &Value, spec: &HookSpec, client: Client) -> bool {
+    let flat_event = is_flat_event(client, spec.event);
+    value.as_array().is_some_and(|elements| {
+        elements.iter().any(|element| {
+            if flat_event {
+                handler_matches(&Value::Null, element, spec)
+            } else {
+                element
+                    .get("hooks")
+                    .and_then(Value::as_array)
+                    .is_some_and(|handlers| handlers.iter().any(|handler| handler_matches(element, handler, spec)))
+            }
         })
     })
 }
@@ -525,8 +573,39 @@ mod tests {
         assert!(text.contains("\"ai-coord\":"));
         assert!(!text.contains("\"hooks\": {"));
 
+        let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(parsed["ai-coord"]["Stop"][0]["type"], "command");
+        assert_eq!(parsed["ai-coord"]["Stop"][0]["command"], "ai-coord hook agy Stop");
+        assert!(parsed["ai-coord"]["Stop"][0].get("hooks").is_none());
+        assert_eq!(parsed["ai-coord"]["PreToolUse"][0]["matcher"], "*");
+        assert_eq!(parsed["ai-coord"]["PreToolUse"][0]["hooks"][0]["type"], "command");
+        assert_eq!(parsed["ai-coord"]["PreToolUse"][0]["hooks"][0]["command"], "ai-coord hook agy PreToolUse");
+
         let check = inspect_hooks(Client::Agy, &path);
         assert!(check.ok);
         assert!(check.missing.is_empty());
+    }
+
+    #[test]
+    fn agy_link_migrates_legacy_grouped_stop_handler() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("hooks.json");
+        fs::write(
+            &path,
+            r#"{"ai-coord":{"Stop":[{"hooks":[{"type":"command","command":"ai-coord hook agy Stop","timeout":5}]}],"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"ai-coord hook agy PreToolUse","timeout":5}]}]}}"#,
+        )
+        .unwrap();
+
+        assert!(!inspect_hooks(Client::Agy, &path).ok);
+
+        let link = link_hooks(Client::Agy, &path, false, false).unwrap();
+        assert!(link.changed);
+
+        let text = fs::read_to_string(&path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(parsed["ai-coord"]["Stop"][0]["type"], "command");
+        assert!(parsed["ai-coord"]["Stop"][0].get("hooks").is_none());
+
+        assert!(inspect_hooks(Client::Agy, &path).ok);
     }
 }

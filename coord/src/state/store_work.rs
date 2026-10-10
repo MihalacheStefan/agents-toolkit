@@ -12,7 +12,7 @@ use super::{
     WorkClaimUpdate, WorkRow, WorkUpdate,
     store::{bump_generation, client_name, invalid_value, parse_client, parse_work_state, work_state_name},
     store_communications::add_message,
-    store_sessions::{end_session_if_revision, reconcile_ended, session_from_row, session_select},
+    store_sessions::{end_session_if_revision, reconcile_ended, session_from_row, session_select, set_session_state},
 };
 
 /// State-owned facade for one atomic work arbitration.
@@ -85,6 +85,10 @@ impl WorkTransaction<'_> {
 
     pub(crate) fn end_session_if_revision(&self, identity: &Identity, expected_revision: i64) -> Result<bool> {
         end_session_if_revision(&self.transaction, identity, expected_revision)
+    }
+
+    pub(crate) fn set_session_state(&self, identity: &Identity, state: crate::domain::SessionState) -> Result<bool> {
+        set_session_state(&self.transaction, identity, state)
     }
 
     /// Remove only sessions whose fingerprint and revision still match the death

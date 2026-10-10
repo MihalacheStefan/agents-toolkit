@@ -5,7 +5,9 @@ use std::{
 };
 
 use crate::{
-    domain::{Client, Identity, Outcome, OutcomeKind, ProcessLiveness, Scope, ScopeKind, WorkState, sanitize},
+    domain::{
+        Client, Identity, Outcome, OutcomeKind, ProcessLiveness, Scope, ScopeKind, SessionState, WorkState, sanitize,
+    },
     error::{AppError, ErrorKind, Result},
     host::{
         any_overlap, git_blob_hashes, git_dirty_paths, git_root, normalize_work_claim_bundle, normalize_work_scopes,
@@ -403,6 +405,7 @@ impl Coordinator {
                     None => false,
                 };
             let Some(work) = store.work(identity)? else {
+                let _ = store.set_session_state(identity, SessionState::Idle);
                 return Ok(Outcome::new(
                     OutcomeKind::Done,
                     0,
@@ -411,6 +414,7 @@ impl Coordinator {
             };
             if work.claim(&repo_root).is_none() {
                 if work.claims.len() == 1 {
+                    let _ = store.set_session_state(identity, SessionState::Idle);
                     return Ok(Outcome::new(
                         OutcomeKind::Done,
                         0,
@@ -431,6 +435,7 @@ impl Coordinator {
                 None => false,
             };
             let Some(work) = store.work(identity)? else {
+                let _ = store.set_session_state(identity, SessionState::Idle);
                 if draft_removed {
                     return Ok(Outcome::new(OutcomeKind::Done, 0, "released"));
                 }
@@ -495,6 +500,7 @@ impl Coordinator {
             }
             let removed = transaction.delete_work(identity)?;
             if removed {
+                transaction.set_session_state(identity, SessionState::Idle)?;
                 let text = sanitize(
                     &format!("Released work '{}'; your queued work may now be ready.", plan.work.label),
                     super::MAX_MESSAGE_CHARS,

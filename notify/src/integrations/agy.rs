@@ -88,23 +88,29 @@ pub fn ensure_agy_hooks(path: &Path, force: bool, dry_run: bool) -> Result<AgyHo
         match hooks.get_mut(spec.event) {
             Some(existing @ Value::Array(_)) => {
                 if !spec_present(existing, *spec) {
-                    existing.as_array_mut().expect("matched an array").push(build_group(*spec));
-                    added.push(spec.event.to_owned());
+                    let array = existing.as_array_mut().expect("matched an array");
+                    if let Some(pos) = array.iter().position(|el| command_present(el, spec.command)) {
+                        array[pos] = build_element(*spec);
+                        updated.push(spec.event.to_owned());
+                    } else {
+                        array.push(build_element(*spec));
+                        added.push(spec.event.to_owned());
+                    }
                 }
             }
             Some(existing) if command_present(existing, spec.command) => {
-                *existing = Value::Array(vec![build_group(*spec)]);
+                *existing = Value::Array(vec![build_element(*spec)]);
                 updated.push(spec.event.to_owned());
             }
             Some(existing) if force => {
-                *existing = Value::Array(vec![build_group(*spec)]);
+                *existing = Value::Array(vec![build_element(*spec)]);
                 updated.push(spec.event.to_owned());
             }
             Some(existing) => {
                 skipped.insert(spec.event.to_owned(), summarize_hook(existing));
             }
             None => {
-                hooks.insert(spec.event.to_owned(), Value::Array(vec![build_group(*spec)]));
+                hooks.insert(spec.event.to_owned(), Value::Array(vec![build_element(*spec)]));
                 added.push(spec.event.to_owned());
             }
         }
@@ -195,13 +201,21 @@ fn load_settings(path: &Path) -> Result<Value> {
     Ok(data)
 }
 
-fn build_group(spec: HookSpec) -> Value {
-    let mut group = Map::new();
-    if let Some(matcher) = spec.matcher {
-        group.insert("matcher".to_owned(), Value::String(matcher.to_owned()));
+fn is_flat_event(event: &str) -> bool {
+    !matches!(event, "PreToolUse" | "PostToolUse")
+}
+
+fn build_element(spec: HookSpec) -> Value {
+    if is_flat_event(spec.event) {
+        json!({ "type": "command", "command": spec.command })
+    } else {
+        let mut group = Map::new();
+        if let Some(matcher) = spec.matcher {
+            group.insert("matcher".to_owned(), Value::String(matcher.to_owned()));
+        }
+        group.insert("hooks".to_owned(), json!([{ "type": "command", "command": spec.command }]));
+        Value::Object(group)
     }
-    group.insert("hooks".to_owned(), json!([{ "type": "command", "command": spec.command }]));
-    Value::Object(group)
 }
 
 fn iter_hook_commands(value: &Value) -> Vec<String> {
@@ -235,27 +249,37 @@ fn command_present(value: &Value, expected: &str) -> bool {
 }
 
 fn spec_present(value: &Value, spec: HookSpec) -> bool {
-    value.as_array().is_some_and(|groups| {
-        groups.iter().any(|group| {
-            let Some(group) = group.as_object() else {
-                return false;
-            };
-            let matcher = group.get("matcher").and_then(Value::as_str);
-            let matcher_matches = match spec.matcher {
-                Some(expected) => matcher == Some(expected),
-                None => matches!(matcher, None | Some("") | Some("*")),
-            };
-            matcher_matches &&
-                group.get("hooks").and_then(Value::as_array).is_some_and(|hooks| {
-                    hooks.iter().any(|hook| {
-                        hook.as_object().is_some_and(|hook| {
-                            hook.get("type").and_then(Value::as_str) == Some("command") &&
-                                hook.get("command")
-                                    .and_then(Value::as_str)
-                                    .is_some_and(|command| command.trim() == spec.command)
+    let flat_event = is_flat_event(spec.event);
+    value.as_array().is_some_and(|elements| {
+        elements.iter().any(|element| {
+            if flat_event {
+                element.as_object().is_some_and(|hook| {
+                    hook.get("type").and_then(Value::as_str) == Some("command") &&
+                        hook.get("command")
+                            .and_then(Value::as_str)
+                            .is_some_and(|command| command.trim() == spec.command)
+                })
+            } else {
+                let Some(group) = element.as_object() else {
+                    return false;
+                };
+                let matcher = group.get("matcher").and_then(Value::as_str);
+                let matcher_matches = match spec.matcher {
+                    Some(expected) => matcher == Some(expected),
+                    None => matches!(matcher, None | Some("") | Some("*")),
+                };
+                matcher_matches &&
+                    group.get("hooks").and_then(Value::as_array).is_some_and(|hooks| {
+                        hooks.iter().any(|hook| {
+                            hook.as_object().is_some_and(|hook| {
+                                hook.get("type").and_then(Value::as_str) == Some("command") &&
+                                    hook.get("command")
+                                        .and_then(Value::as_str)
+                                        .is_some_and(|command| command.trim() == spec.command)
+                            })
                         })
                     })
-                })
+            }
         })
     })
 }
@@ -292,7 +316,9 @@ mod tests {
 
         assert_eq!(update.added.len(), HOOK_SPECS.len());
         assert_eq!(settings["ai-notify"]["PreToolUse"][0]["matcher"], "ask_question");
-        assert_eq!(settings["ai-notify"]["Stop"][0]["hooks"][0]["type"], "command");
+        assert_eq!(settings["ai-notify"]["Stop"][0]["type"], "command");
+        assert_eq!(settings["ai-notify"]["Stop"][0]["command"], "ai-notify event agy");
+        assert!(settings["ai-notify"]["Stop"][0].get("hooks").is_none());
         assert!(fs::read_to_string(path).unwrap().ends_with('\n'));
     }
 
@@ -318,6 +344,30 @@ mod tests {
         assert!(update.added.contains(&"Stop".to_owned()));
         assert!(update.updated.contains(&"PreToolUse".to_owned()));
         assert_eq!(iter_hook_commands(&settings["ai-notify"]["Stop"]).len(), 2);
+    }
+
+    #[test]
+    fn migrates_legacy_grouped_stop_handler() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("hooks.json");
+        fs::write(
+            &path,
+            serde_json::to_string(&json!({
+                "ai-notify": {
+                    "Stop": [{"hooks": [{"type": "command", "command": "ai-notify event agy"}]}],
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let update = ensure_agy_hooks(&path, false, false).unwrap();
+        let settings: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+
+        assert!(update.updated.contains(&"Stop".to_owned()));
+        assert_eq!(settings["ai-notify"]["Stop"][0]["type"], "command");
+        assert_eq!(settings["ai-notify"]["Stop"][0]["command"], "ai-notify event agy");
+        assert!(settings["ai-notify"]["Stop"][0].get("hooks").is_none());
     }
 
     #[test]
@@ -349,7 +399,7 @@ mod tests {
         let groups = |specs: &[HookSpec]| {
             let mut hooks = Map::new();
             for spec in specs {
-                hooks.insert(spec.event.to_owned(), Value::Array(vec![build_group(*spec)]));
+                hooks.insert(spec.event.to_owned(), Value::Array(vec![build_element(*spec)]));
             }
             Value::Object(Map::from_iter([(String::from("ai-notify"), Value::Object(hooks))]))
         };

@@ -1577,3 +1577,30 @@ fn start_auto_assigns_callsign_when_session_created_without_one() {
     let session = coordinator.store().unwrap().session(&uncallsigned).unwrap().unwrap();
     assert!(session.callsign.is_some(), "session created via start_for receives auto-callsign");
 }
+
+#[test]
+fn done_transitions_session_state_to_idle() {
+    let holder = identity("done-holder");
+    let (temp, roots) = repos(1);
+    let store = Store::open(temp.path().join("state.db")).unwrap();
+    let probe = Arc::new(FakeProbe::default());
+    probe.set(301, ProcessLiveness::Alive);
+    let coordinator = coordinator_with_coverage(store, probe, Arc::new(AtomicUsize::new(0)), true);
+
+    let outcome =
+        coordinator.start_for(holder.clone(), "work label", &[PathBuf::from("file.rs")], &[], &roots[0]).unwrap();
+    assert_eq!(outcome.kind, OutcomeKind::Ready);
+    let session = coordinator.store().unwrap().session(&holder).unwrap().unwrap();
+    assert_eq!(session.state, SessionState::Working);
+
+    let done_outcome = coordinator.done_for(&holder, &roots[0]).unwrap();
+    assert_eq!(done_outcome.kind, OutcomeKind::Done);
+    let session = coordinator.store().unwrap().session(&holder).unwrap().unwrap();
+    assert_eq!(session.state, SessionState::Idle);
+
+    // Calling done again when work is already clear preserves idle
+    let done_again = coordinator.done_for(&holder, &roots[0]).unwrap();
+    assert_eq!(done_again.kind, OutcomeKind::Done);
+    let session = coordinator.store().unwrap().session(&holder).unwrap().unwrap();
+    assert_eq!(session.state, SessionState::Idle);
+}
