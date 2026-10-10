@@ -397,11 +397,11 @@ fn link_agy_supports_dry_run_updates_and_force() {
     assert!(contents.contains("ask_question"));
 
     let malformed = environment.home.join(".gemini/bad.json");
-    fs::write(&malformed, r#"{"hooks":[]}"#).unwrap();
+    fs::write(&malformed, r#"{"ai-notify":[]}"#).unwrap();
     environment
         .run(&["link", "agy", "--path", malformed.to_str().unwrap()], "")
         .code(1)
-        .stderr(predicate::str::contains("hooks field must be an object"));
+        .stderr(predicate::str::contains("ai-notify field must be an object"));
 }
 
 #[test]

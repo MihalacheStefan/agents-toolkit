@@ -85,16 +85,24 @@ pub(crate) fn link_default_hooks(
     link_hooks(client, &path, dry_run, force)
 }
 
+pub(crate) const fn hook_container_name(client: Client) -> &'static str {
+    match client {
+        Client::Agy => "ai-coord",
+        Client::Codex | Client::Claude => "hooks",
+    }
+}
+
 /// Install exactly one complete canonical set, preserving all unrelated source.
 pub(crate) fn link_hooks(client: Client, path: &Path, dry_run: bool, force: bool) -> Result<LinkResult, ConfigError> {
     let mut document = read_document(path)?;
     let root = document.root.object().ok_or_else(|| ConfigError::RootNotObject(path.to_path_buf()))?;
     let original = document.text.clone();
+    let container = hook_container_name(client);
 
-    if document.member(root, "hooks").is_none() {
-        document = document.insert_member(root, "hooks", &json!({}))?;
+    if document.member(root, container).is_none() {
+        document = document.insert_member(root, container, &json!({}))?;
     }
-    let hooks_member = hooks_member(&document);
+    let hooks_member = hooks_member(&document, client);
     if hooks_member.value.object().is_none() {
         if !force {
             return Err(ConfigError::HooksNotObject);
@@ -104,7 +112,7 @@ pub(crate) fn link_hooks(client: Client, path: &Path, dry_run: bool, force: bool
 
     document = remove_stale_owned_commands(document, client, hook_specs(client))?;
     for spec in hook_specs(client) {
-        let hooks = hooks_object(&document);
+        let hooks = hooks_object(&document, client);
         let event = document.member(hooks, spec.event).cloned();
         if event.as_ref().is_some_and(|event| spec_present(&event.value.value(), spec)) {
             continue;
@@ -118,7 +126,7 @@ pub(crate) fn link_hooks(client: Client, path: &Path, dry_run: bool, force: bool
                     }
                     document = document.replace_value(&event.value, &Value::Array(Vec::new()))?;
                 }
-                let hooks = hooks_object(&document);
+                let hooks = hooks_object(&document, client);
                 let event = document.member(hooks, spec.event).expect("event was inserted or replaced");
                 let array = event.value.array().expect("event is an array");
                 document = document.append_element(array, &group(spec))?;
@@ -173,13 +181,14 @@ pub(crate) fn inspect_hooks(client: Client, path: &Path) -> HooksCheck {
             error: Some("root is not an object".to_owned()),
         };
     };
-    let Some(hooks) = document.member(root, "hooks").and_then(|member| member.value.object()) else {
+    let container = hook_container_name(client);
+    let Some(hooks) = document.member(root, container).and_then(|member| member.value.object()) else {
         return HooksCheck {
             client,
             path: path.to_path_buf(),
             ok: false,
             missing: Vec::new(),
-            error: Some("hooks field is not an object".to_owned()),
+            error: Some(format!("{container} field is not an object")),
         };
     };
     let missing: Vec<_> = hook_specs(client)
@@ -273,7 +282,7 @@ fn remove_stale_owned_commands(
     let owned = [format!("ai-coord hook {}", client.name()), format!("ai-coord waker {}", client.name())];
     let mut preserved = std::collections::HashSet::new();
     loop {
-        let hooks = hooks_object(&document).clone();
+        let hooks = hooks_object(&document, client).clone();
         let mut removed = false;
         'events: for event in &hooks.members {
             let Some(groups) = event.value.array() else {
@@ -300,7 +309,7 @@ fn remove_stale_owned_commands(
                         continue;
                     }
                     document = document.remove_element(handlers, handler_index)?;
-                    document = prune_empty_group(document, &event.key, group_index)?;
+                    document = prune_empty_group(document, client, &event.key, group_index)?;
                     removed = true;
                     break 'events;
                 }
@@ -314,10 +323,11 @@ fn remove_stale_owned_commands(
 
 fn prune_empty_group(
     mut document: JsoncDocument,
+    client: Client,
     event_name: &str,
     group_index: usize,
 ) -> Result<JsoncDocument, ConfigError> {
-    let hooks = hooks_object(&document);
+    let hooks = hooks_object(&document, client);
     let event_index = hooks.members.iter().position(|member| member.key == event_name).expect("event still exists");
     let event = &hooks.members[event_index];
     let array = event.value.array().expect("event is an array");
@@ -332,7 +342,7 @@ fn prune_empty_group(
         return Ok(document);
     }
     document = document.remove_element(array, group_index)?;
-    let hooks = hooks_object(&document);
+    let hooks = hooks_object(&document, client);
     let event_index = hooks.members.iter().position(|member| member.key == event_name).expect("event still exists");
     let event = &hooks.members[event_index];
     if event.value.array().is_some_and(|array| array.elements.is_empty()) {
@@ -341,13 +351,14 @@ fn prune_empty_group(
     Ok(document)
 }
 
-fn hooks_member(document: &JsoncDocument) -> &super::jsonc::ObjectMember {
+fn hooks_member(document: &JsoncDocument, client: Client) -> &super::jsonc::ObjectMember {
     let root = document.root.object().expect("root was checked as an object");
-    document.member(root, "hooks").expect("hooks was inserted")
+    let container = hook_container_name(client);
+    document.member(root, container).expect("hook container was inserted")
 }
 
-fn hooks_object(document: &JsoncDocument) -> &ObjectNode {
-    hooks_member(document).value.object().expect("hooks was checked as an object")
+fn hooks_object(document: &JsoncDocument, client: Client) -> &ObjectNode {
+    hooks_member(document, client).value.object().expect("hook container was checked as an object")
 }
 
 fn matching_spec<'a>(event: &str, group: &Value, handler: &Value, specs: &'a [HookSpec]) -> Option<&'a HookSpec> {
@@ -500,5 +511,22 @@ mod tests {
         // modular selection from an explicit runtime path.
         assert_eq!(claude_link_path(home.join("settings.json")), home.join("settings/hooks.jsonc"));
         assert_eq!(link_path(Client::Claude, Some(&alternate)).unwrap(), alternate);
+    }
+
+    #[test]
+    fn agy_link_installs_under_ai_coord_container() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("hooks.json");
+        fs::write(&path, "{}").unwrap();
+
+        let link = link_hooks(Client::Agy, &path, false, false).unwrap();
+        assert!(link.changed);
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("\"ai-coord\":"));
+        assert!(!text.contains("\"hooks\": {"));
+
+        let check = inspect_hooks(Client::Agy, &path);
+        assert!(check.ok);
+        assert!(check.missing.is_empty());
     }
 }

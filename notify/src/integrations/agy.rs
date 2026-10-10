@@ -75,10 +75,10 @@ pub fn default_hook_path() -> Result<PathBuf> {
 pub fn ensure_agy_hooks(path: &Path, force: bool, dry_run: bool) -> Result<AgyHooksUpdate> {
     let mut data = load_settings(path)?;
     let root = data.as_object_mut().expect("load_settings validates object roots");
-    let hooks = root.entry("hooks").or_insert_with(|| Value::Object(Map::new()));
+    let hooks = root.entry("ai-notify").or_insert_with(|| Value::Object(Map::new()));
     let hooks = hooks
         .as_object_mut()
-        .ok_or_else(|| AppError::integration(format!("{}: hooks field must be an object", path.display())))?;
+        .ok_or_else(|| AppError::integration(format!("{}: ai-notify field must be an object", path.display())))?;
 
     let mut added = Vec::new();
     let mut updated = Vec::new();
@@ -146,11 +146,11 @@ pub fn inspect_agy_hooks(config_root: &Path, project_root: &Path) -> AgyHooksRep
                 continue;
             }
         };
-        let Some(hooks) = data.get("hooks") else {
+        let Some(hooks) = data.get("ai-notify") else {
             continue;
         };
         let Some(hooks) = hooks.as_object() else {
-            errors.insert(path, "hooks field must be an object".to_owned());
+            errors.insert(path, "ai-notify field must be an object".to_owned());
             continue;
         };
 
@@ -291,8 +291,8 @@ mod tests {
         let settings: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
 
         assert_eq!(update.added.len(), HOOK_SPECS.len());
-        assert_eq!(settings["hooks"]["PreToolUse"][0]["matcher"], "ask_question");
-        assert_eq!(settings["hooks"]["Stop"][0]["hooks"][0]["type"], "command");
+        assert_eq!(settings["ai-notify"]["PreToolUse"][0]["matcher"], "ask_question");
+        assert_eq!(settings["ai-notify"]["Stop"][0]["hooks"][0]["type"], "command");
         assert!(fs::read_to_string(path).unwrap().ends_with('\n'));
     }
 
@@ -303,7 +303,7 @@ mod tests {
         fs::write(
             &path,
             serde_json::to_string(&json!({
-                "hooks": {
+                "ai-notify": {
                     "Stop": [{"hooks": [{"type": "command", "command": "ai-coord hook agy"}]}],
                     "PreToolUse": {"command": " ai-notify event agy  "}
                 }
@@ -317,19 +317,19 @@ mod tests {
 
         assert!(update.added.contains(&"Stop".to_owned()));
         assert!(update.updated.contains(&"PreToolUse".to_owned()));
-        assert_eq!(iter_hook_commands(&settings["hooks"]["Stop"]).len(), 2);
+        assert_eq!(iter_hook_commands(&settings["ai-notify"]["Stop"]).len(), 2);
     }
 
     #[test]
     fn skips_foreign_non_lists_unless_forced_and_never_writes_invalid_json() {
         let directory = tempdir().unwrap();
         let path = directory.path().join("hooks.json");
-        fs::write(&path, r#"{"hooks":{"Stop":{"command":"echo stop"}}}"#).unwrap();
+        fs::write(&path, r#"{"ai-notify":{"Stop":{"command":"echo stop"}}}"#).unwrap();
 
         let update = ensure_agy_hooks(&path, false, false).unwrap();
         assert_eq!(update.skipped["Stop"], "echo stop");
         assert_eq!(
-            serde_json::from_slice::<Value>(&fs::read(&path).unwrap()).unwrap()["hooks"]["Stop"]["command"],
+            serde_json::from_slice::<Value>(&fs::read(&path).unwrap()).unwrap()["ai-notify"]["Stop"]["command"],
             "echo stop"
         );
 
@@ -351,7 +351,7 @@ mod tests {
             for spec in specs {
                 hooks.insert(spec.event.to_owned(), Value::Array(vec![build_group(*spec)]));
             }
-            Value::Object(Map::from_iter([(String::from("hooks"), Value::Object(hooks))]))
+            Value::Object(Map::from_iter([(String::from("ai-notify"), Value::Object(hooks))]))
         };
         fs::write(config.join("hooks.json"), serde_json::to_string(&groups(&HOOK_SPECS[..1])).unwrap()).unwrap();
         fs::write(project.join(".gemini/config/hooks.json"), serde_json::to_string(&groups(&HOOK_SPECS[1..])).unwrap())

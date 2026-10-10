@@ -607,7 +607,13 @@ fn hook_event(payload: &Value) -> &str {
 }
 
 fn noop_hook_output(client: &str, event: &str) -> &'static str {
-    if (client == "codex" && matches!(event, "Stop" | "SubagentStop")) || client == "agy" { "{}" } else { "" }
+    if client == "agy" && event == "PreToolUse" {
+        "{\"decision\":\"allow\"}"
+    } else if (client == "codex" && matches!(event, "Stop" | "SubagentStop")) || client == "agy" {
+        "{}"
+    } else {
+        ""
+    }
 }
 
 fn hook_client_name(client: HookClient) -> &'static str {

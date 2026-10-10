@@ -1788,7 +1788,7 @@ fn agy_hooks_smoke_test() {
             "stepIdx": 1
         }),
     );
-    assert_eq!(pre_output, "{}");
+    assert_eq!(pre_output, "{\"decision\":\"allow\"}");
 
     // Verify session was created and callsign auto-assigned
     let session = coordinator
@@ -1843,7 +1843,7 @@ fn agy_hooks_smoke_test() {
             "stepIdx": 1
         }),
     );
-    assert_eq!(inferred_pre, "{}");
+    assert_eq!(inferred_pre, "{\"decision\":\"allow\"}");
 
     let inferred_session = coordinator
         .store()

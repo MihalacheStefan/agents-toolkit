@@ -927,6 +927,20 @@ fn bundle_done_requires_a_claimed_repository() {
 }
 
 #[test]
+fn bundle_done_releases_bundle_from_non_git_parent_directory() {
+    let holder = identity("holder");
+    let (temp, roots, coordinator) = fixture(2, &[(&holder, 0, 67)]);
+    let requested = files(&roots, &["a.rs", "b.rs"]);
+    coordinator.start_bundle_for(holder.clone(), "holder", &requested, &[], &roots[0]).unwrap();
+    assert!(coordinator.store().unwrap().work(&holder).unwrap().is_some());
+
+    // temp.path() is the parent directory of roots[0] and roots[1], not a git worktree
+    let outcome = coordinator.done_for(&holder, temp.path()).unwrap();
+    assert_eq!(outcome.kind, OutcomeKind::Done);
+    assert!(coordinator.store().unwrap().work(&holder).unwrap().is_none());
+}
+
+#[test]
 fn baseline_selects_each_bundle_claim_and_rejects_an_unclaimed_root() {
     let owner = identity("owner");
     let (_temp, roots, coordinator) = fixture(3, &[(&owner, 0, 70)]);

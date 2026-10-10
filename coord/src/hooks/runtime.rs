@@ -648,7 +648,9 @@ fn collect_touched(value: &Value, paths: &mut Vec<String>) {
 }
 
 fn noop_stdout(client: &str, event: &str) -> String {
-    if (client == "codex" && matches!(event, "Stop" | "SubagentStop")) || client == "agy" {
+    if client == "agy" && event == "PreToolUse" {
+        json!({"decision": "allow"}).to_string()
+    } else if (client == "codex" && matches!(event, "Stop" | "SubagentStop")) || client == "agy" {
         "{}".to_owned()
     } else {
         String::new()

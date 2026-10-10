@@ -393,30 +393,55 @@ impl Coordinator {
     }
 
     pub(crate) fn done_for(&self, identity: &Identity, cwd: &Path) -> Result<Outcome> {
-        let root = git_root(&resolved(cwd)).ok_or_else(|| AppError::operational("done requires a Git worktree"))?;
-        let repo_root = path_text(&root)?;
+        let root = git_root(&resolved(cwd));
         let mut store = self.store()?;
-        let draft_removed = match store.draft_for_session(identity)?.filter(|draft| draft.claim(&repo_root).is_some()) {
-            Some(draft) => store.delete_draft(draft.id)?,
-            None => false,
-        };
-        let Some(work) = store.work(identity)? else {
-            return Ok(Outcome::new(OutcomeKind::Done, 0, if draft_removed { "released" } else { "already clear" }));
-        };
-        if work.claim(&repo_root).is_none() {
-            if work.claims.len() == 1 {
+        if let Some(root) = root {
+            let repo_root = path_text(&root)?;
+            let draft_removed =
+                match store.draft_for_session(identity)?.filter(|draft| draft.claim(&repo_root).is_some()) {
+                    Some(draft) => store.delete_draft(draft.id)?,
+                    None => false,
+                };
+            let Some(work) = store.work(identity)? else {
                 return Ok(Outcome::new(
                     OutcomeKind::Done,
                     0,
                     if draft_removed { "released" } else { "already clear" },
                 ));
+            };
+            if work.claim(&repo_root).is_none() {
+                if work.claims.len() == 1 {
+                    return Ok(Outcome::new(
+                        OutcomeKind::Done,
+                        0,
+                        if draft_removed { "released" } else { "already clear" },
+                    ));
+                }
+                return Err(AppError::operational(format!(
+                    "repository bundle does not claim {repo_root}; run ai-coord done from a claimed repository to release the whole bundle:\n  cd {} && ai-coord done",
+                    crate::shell_quote(&work.claims[0].repo_root)
+                )));
             }
-            return Err(AppError::operational(format!(
-                "repository bundle does not claim {repo_root}; run ai-coord done from a claimed repository to release the whole bundle:\n  cd {} && ai-coord done",
-                crate::shell_quote(&work.claims[0].repo_root)
-            )));
+            self.release_work(&mut store, identity, work)
+        } else {
+            // cwd is not inside a Git worktree (e.g. running from a parent workspace root).
+            // If the session owns a bundle, release the bundle.
+            let draft_removed = match store.draft_for_session(identity)? {
+                Some(draft) => store.delete_draft(draft.id)?,
+                None => false,
+            };
+            let Some(work) = store.work(identity)? else {
+                if draft_removed {
+                    return Ok(Outcome::new(OutcomeKind::Done, 0, "released"));
+                }
+                return Err(AppError::operational("done requires a Git worktree"));
+            };
+            if work.claims.len() > 1 {
+                self.release_work(&mut store, identity, work)
+            } else {
+                Err(AppError::operational("done requires a Git worktree"))
+            }
         }
-        self.release_work(&mut store, identity, work)
     }
 
     fn release_work(&self, store: &mut Store, identity: &Identity, work: WorkRow) -> Result<Outcome> {
