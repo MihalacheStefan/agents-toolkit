@@ -1024,7 +1024,13 @@ fn sweep_repo_message_targets_include_bundle_peers_once_and_exclude_the_sender()
         super::resolve_targets("repo", &store.sessions().unwrap(), &store.works().unwrap(), Some(&roots[0]), &sender)
             .unwrap();
     recipients.sort_by(|left, right| left.session_id.cmp(&right.session_id));
-    assert_eq!(recipients, [bundled, local]);
+    assert_eq!(recipients, [bundled.clone(), local.clone()]);
+
+    let mut all_recipients =
+        super::resolve_targets("all", &store.sessions().unwrap(), &store.works().unwrap(), Some(&roots[0]), &sender)
+            .unwrap();
+    all_recipients.sort_by(|left, right| left.session_id.cmp(&right.session_id));
+    assert_eq!(all_recipients, [bundled, local, outside]);
 }
 
 #[test]

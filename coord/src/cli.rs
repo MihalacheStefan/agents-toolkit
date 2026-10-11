@@ -41,9 +41,10 @@ pub(crate) enum Command {
     Status(StatusArgs),
     /// Serve the local dashboard HTTP interface.
     Serve(ServeArgs),
-    /// Send bounded peer data to one session or current-repository peers.
+    /// Send bounded peer data to one session, current-repository peers, or all peers.
     ///
     /// TARGET=repo selects live peers in the current Git worktree.
+    /// TARGET=all selects all live peers across all repositories.
     Msg(MessageArgs),
     /// List or acknowledge recipient-only messages.
     Inbox(InboxArgs),
@@ -207,7 +208,9 @@ pub(crate) struct ServeArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct MessageArgs {
+    /// Target session, "repo", or "all".
     pub(crate) target: String,
+    /// Message text to deliver.
     pub(crate) text: String,
 }
 

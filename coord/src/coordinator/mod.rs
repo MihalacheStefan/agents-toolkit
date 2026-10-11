@@ -588,6 +588,14 @@ fn resolve_targets(
     root: Option<&Path>,
     sender: &Identity,
 ) -> Result<Vec<Identity>> {
+    if target == "all" {
+        let mut seen = HashSet::new();
+        return Ok(sessions
+            .iter()
+            .filter(|row| row.identity != *sender && seen.insert(&row.identity))
+            .map(|row| row.identity.clone())
+            .collect());
+    }
     if target == "repo" {
         let root = root.ok_or_else(|| AppError::operational("repo target requires a Git worktree"))?;
         let root = path_text(root)?;

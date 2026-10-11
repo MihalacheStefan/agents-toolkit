@@ -207,6 +207,16 @@ const AGY_HOOK_SPECS: &[HookSpec] = &[
         async_rewake: None,
     },
     HookSpec {
+        event: "PreInvocation",
+        command: "ai-coord hook agy PreInvocation",
+        matcher: None,
+        timeout: Some(5),
+        additional_context_limit: None,
+        if_filter: None,
+        async_: None,
+        async_rewake: None,
+    },
+    HookSpec {
         event: "PostToolUse",
         command: "ai-coord hook agy PostToolUse",
         matcher: Some("*"),
@@ -244,9 +254,11 @@ mod tests {
     fn canonical_specs_have_the_expected_host_contract() {
         let codex = hook_specs(Client::Codex);
         let claude = hook_specs(Client::Claude);
+        let agy = hook_specs(Client::Agy);
 
         assert_eq!(codex.len(), 7);
         assert_eq!(claude.len(), 9);
+        assert_eq!(agy.len(), 4);
         assert_eq!(codex[0].matcher, Some("startup|resume|clear"));
         assert_eq!(codex[1].additional_context_limit, Some(200));
         for waker in &claude[7..] {

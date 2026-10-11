@@ -241,6 +241,18 @@ impl<'a> HookRuntime<'a> {
             return Ok(noop_stdout(client_name(client), event));
         }
 
+        if client == Client::Agy && event == "PostToolUse" {
+            if let Some(root) = root.as_deref() {
+                let paths = touched_paths(payload, &cwd, root);
+                if !paths.is_empty() {
+                    let repo_root = path_text(root)?;
+                    store.record_touched(&identity, &repo_root, &paths, self.coordinator.now())?;
+                }
+            }
+            store.hook_success(client, event, self.coordinator.now())?;
+            return Ok(noop_stdout(client_name(client), event));
+        }
+
         if is_nudge_event(client, event) {
             let mut scope_fragment = None;
             if let Some(root) = root.as_deref() {
@@ -286,7 +298,7 @@ impl<'a> HookRuntime<'a> {
                     "Owned scopes are clean; run `ai-coord done` if the work is complete.",
                 );
             if context.is_empty() {
-                return Ok(String::new());
+                return Ok(noop_stdout(client_name(client), event));
             }
             if recommendations_selected {
                 let _ = self.coordinator.mark_recommendations_surfaced(&identity, &recommendation_ids);
@@ -298,7 +310,14 @@ impl<'a> HookRuntime<'a> {
                 let _ = store.mark_clean_scope_nudged(&identity, &repo_root);
             }
             if client == Client::Agy {
-                return Ok(noop_stdout(client_name(client), event));
+                return Ok(json!({
+                    "injectSteps": [
+                        {
+                            "ephemeralMessage": context
+                        }
+                    ]
+                })
+                .to_string());
             }
             return Ok(json!({
                 "hookSpecificOutput": {
@@ -667,7 +686,7 @@ fn contains_exact_id(message: &str, id: &str) -> bool {
 fn is_nudge_event(client: Client, event: &str) -> bool {
     matches!(
         (client, event),
-        (Client::Claude, "PostToolBatch") | (Client::Codex, "PostToolUse") | (Client::Agy, "PostToolUse")
+        (Client::Claude, "PostToolBatch") | (Client::Codex, "PostToolUse") | (Client::Agy, "PreInvocation")
     )
 }
 fn parse_client(client: &str) -> Option<Client> {
@@ -697,6 +716,8 @@ fn infer_agy_event(payload: &Value) -> Option<&'static str> {
         payload.get("stop_hook_active").is_some()
     {
         Some("Stop")
+    } else if payload.get("invocationNum").is_some() || payload.get("invocation_num").is_some() {
+        Some("PreInvocation")
     } else if payload.get("stepIdx").is_some() || payload.get("step_idx").is_some() {
         Some("PostToolUse")
     } else {

@@ -1809,7 +1809,59 @@ fn agy_hooks_smoke_test() {
             "stepIdx": 1
         }),
     );
-    assert_eq!(post_output, "");
+    assert_eq!(post_output, "{}");
+
+    // PreInvocation with no pending messages returns empty JSON object
+    let pre_inv_output = runtime.ingest_with_event(
+        "agy",
+        Some("PreInvocation"),
+        &json!({
+            "conversationId": "agy-test-session",
+            "workspacePaths": [repo.to_str().unwrap()],
+            "invocationNum": 1
+        }),
+    );
+    assert_eq!(pre_inv_output, "{}");
+
+    // Send a message to the agy session
+    let sender = Identity { client: Client::Codex, session_id: "sender-peer".into() };
+    coordinator
+        .store()
+        .unwrap()
+        .send_message(
+            &sender,
+            &[Identity { client: Client::Agy, session_id: "agy-test-session".into() }],
+            "hello from peer",
+            Some(repo.to_str().unwrap()),
+            1.0,
+        )
+        .unwrap();
+
+    // PreInvocation with unread message injects ephemeralMessage step
+    let pre_inv_nudge = runtime.ingest_with_event(
+        "agy",
+        Some("PreInvocation"),
+        &json!({
+            "conversationId": "agy-test-session",
+            "workspacePaths": [repo.to_str().unwrap()],
+            "invocationNum": 2
+        }),
+    );
+    let nudge_json: Value = serde_json::from_str(&pre_inv_nudge).unwrap();
+    let message = nudge_json["injectSteps"][0]["ephemeralMessage"].as_str().unwrap();
+    assert!(message.contains("1 unread peer messages; `ai-coord inbox` lists them"));
+
+    // Subsequent PreInvocation has no more unnotified messages
+    let pre_inv_cleared = runtime.ingest_with_event(
+        "agy",
+        Some("PreInvocation"),
+        &json!({
+            "conversationId": "agy-test-session",
+            "workspacePaths": [repo.to_str().unwrap()],
+            "invocationNum": 3
+        }),
+    );
+    assert_eq!(pre_inv_cleared, "{}");
 
     let stop_output = runtime.ingest_with_event(
         "agy",
@@ -1861,7 +1913,17 @@ fn agy_hooks_smoke_test() {
             "stepIdx": 1
         }),
     );
-    assert_eq!(inferred_post, "");
+    assert_eq!(inferred_post, "{}");
+
+    let inferred_pre_inv = runtime.ingest(
+        "agy",
+        &json!({
+            "conversationId": "agy-inferred-session",
+            "workspacePaths": [repo.to_str().unwrap()],
+            "invocationNum": 1
+        }),
+    );
+    assert_eq!(inferred_pre_inv, "{}");
 
     let inferred_stop = runtime.ingest(
         "agy",
