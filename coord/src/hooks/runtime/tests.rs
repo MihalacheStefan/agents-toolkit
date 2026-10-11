@@ -2032,36 +2032,73 @@ fn agy_delegate_detection_and_parent_superseding() {
     let delegates_after_stop = coordinator.store().unwrap().delegates().unwrap();
     assert!(delegates_after_stop.is_empty(), "delegate removed when ended");
 
-    // 4. Superseding test: another session on the same process supersedes parent
+    // 4. Test delegate detection via .system_generated/messages/*.json
+    let msg_subagent_id = "msg-subagent-agy-session";
+    let msg_subagent_dir = brain_dir.join(msg_subagent_id).join(".system_generated/messages");
+    fs::create_dir_all(&msg_subagent_dir).unwrap();
+    fs::write(
+        msg_subagent_dir.join("msg-1.json"),
+        json!({
+            "id": "msg-1",
+            "recipient": msg_subagent_id,
+            "sender": parent_id,
+            "content": "review this"
+        })
+        .to_string(),
+    )
+    .unwrap();
+
+    let pre_sub_msg = runtime.ingest_with_event(
+        "agy",
+        Some("PreToolUse"),
+        &json!({
+            "conversationId": msg_subagent_id,
+            "workspacePaths": [repo.to_str().unwrap()],
+            "toolCall": {
+                "name": "view_file"
+            },
+            "stepIdx": 1
+        }),
+    );
+    assert_eq!(pre_sub_msg, "{\"decision\":\"allow\"}");
+    let delegates_msg = coordinator.store().unwrap().delegates().unwrap();
+    assert_eq!(delegates_msg.len(), 1);
+    assert_eq!(delegates_msg[0].parent, parent_identity);
+    assert_eq!(delegates_msg[0].agent_id, msg_subagent_id);
+
+    // 5. Test that an unknown session executing PreToolUse does NOT supersede existing parent!
+    let unknown_tool_session_id = "unknown-tool-agy-session";
+    runtime.ingest_with_event(
+        "agy",
+        Some("PreToolUse"),
+        &json!({
+            "conversationId": unknown_tool_session_id,
+            "workspacePaths": [repo.to_str().unwrap()],
+            "toolCall": {
+                "name": "view_file"
+            },
+            "stepIdx": 1
+        }),
+    );
+    // Parent MUST still exist!
+    assert!(
+        coordinator.store().unwrap().session(&parent_identity).unwrap().is_some(),
+        "parent session must NOT be superseded by unknown PreToolUse hook"
+    );
+
+    // 6. Superseding test: a new top-level session (PreInvocation) on the same process supersedes parent
     let next_parent_id = "next-parent-agy-session";
     let next_parent_identity = Identity { client: Client::Agy, session_id: next_parent_id.to_owned() };
 
-    // Register a delegate under parent before superseding
-    coordinator
-        .store()
-        .unwrap()
-        .update_delegate(&parent_identity, "active-sub", Some("reviewer"), "active", 100.0)
-        .unwrap();
-    assert_eq!(coordinator.store().unwrap().delegates().unwrap().len(), 1);
-
-    // Next top-level session with matching fingerprint supersedes old parent and its delegates
-    let update = SessionUpdate {
-        identity: next_parent_identity.clone(),
-        cwd: repo.to_str().unwrap().to_owned(),
-        repo_root: Some(repo.to_str().unwrap().to_owned()),
-        state: SessionState::Working,
-        source: "hook".to_owned(),
-        name: None,
-        waiting_for: None,
-        permission_mode: None,
-        update_permission_mode: false,
-        coordination_waived: None,
-        fingerprint: coordinator.store().unwrap().session(&parent_identity).unwrap().and_then(|r| r.fingerprint),
-        transcript_path: None,
-        started_at: None,
-        current: 100.0,
-    };
-    coordinator.store().unwrap().upsert_session_superseding(&update).unwrap();
+    runtime.ingest_with_event(
+        "agy",
+        Some("PreInvocation"),
+        &json!({
+            "conversationId": next_parent_id,
+            "workspacePaths": [repo.to_str().unwrap()],
+            "invocationNum": 1
+        }),
+    );
 
     assert!(coordinator.store().unwrap().session(&parent_identity).unwrap().is_none(), "old parent superseded");
     assert!(

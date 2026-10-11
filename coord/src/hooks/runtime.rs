@@ -210,7 +210,9 @@ impl<'a> HookRuntime<'a> {
                 started_at: existing.as_ref().map(|row| row.started_at),
                 current: self.coordinator.now(),
             };
-            if event == "SessionStart" || (client == Client::Agy && existing.is_none()) {
+            let is_agy_top_level_start =
+                client == Client::Agy && existing.is_none() && matches!(event, "PreInvocation" | "UserPromptSubmit");
+            if event == "SessionStart" || is_agy_top_level_start {
                 store.upsert_session_superseding(&update)?
             } else {
                 store.upsert_session(&update)?
@@ -740,14 +742,31 @@ fn infer_agy_event(payload: &Value) -> Option<&'static str> {
 /// `Some((parent_session_id, subagent_session_id))` if so.
 fn detect_agy_delegate(session_id: &str) -> Option<(String, String)> {
     let home = home_dir()?;
-    let transcript = home
-        .join(".gemini")
-        .join("antigravity-cli")
-        .join("brain")
-        .join(session_id)
-        .join(".system_generated")
-        .join("logs")
-        .join("transcript.jsonl");
+    let brain_dir = home.join(".gemini").join("antigravity-cli").join("brain").join(session_id);
+
+    // 1. Fast path: check `.system_generated/messages/*.json` where incoming prompt message
+    // from parent contains sender and recipient.
+    let messages_dir = brain_dir.join(".system_generated").join("messages");
+    if let Ok(entries) = std::fs::read_dir(&messages_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.file_name().and_then(|n| n.to_str()) != Some("read.json") &&
+                path.extension().and_then(|e| e.to_str()) == Some("json") &&
+                let Ok(file) = std::fs::File::open(&path) &&
+                let Ok(msg) = serde_json::from_reader::<_, Value>(file) &&
+                msg.get("recipient").and_then(Value::as_str) == Some(session_id) &&
+                let Some(sender) = msg.get("sender").and_then(Value::as_str) &&
+                !sender.is_empty() &&
+                sender != session_id &&
+                sender != "system"
+            {
+                return Some((sender.to_owned(), session_id.to_owned()));
+            }
+        }
+    }
+
+    // 2. Transcript check: step 0 has SYSTEM message with sender=<parent_id>
+    let transcript = brain_dir.join(".system_generated").join("logs").join("transcript.jsonl");
 
     let file = std::fs::File::open(transcript).ok()?;
     let mut reader = std::io::BufReader::new(file);
