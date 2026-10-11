@@ -11,7 +11,7 @@ use crate::{
     coordinator::{Coordinator, assign_auto_callsign},
     domain::{Client, Identity, Outcome, SessionState, WorkState, client_name, sanitize},
     error::{AppError, Result},
-    host::{git_dirty_paths, git_root, host_process_reference, normalize_repo_path, relevant_dirty},
+    host::{git_dirty_paths, git_root, home_dir, host_process_reference, normalize_repo_path, relevant_dirty},
     state::SessionUpdate,
 };
 
@@ -86,7 +86,16 @@ impl<'a> HookRuntime<'a> {
                 return noop_stdout(client, event);
             }
         };
-        match self.ingest_supported(event, identity, delegate_id, payload) {
+        let (identity, delegate_id, detected_delegate) = if client_kind == Client::Agy && delegate_id.is_none() {
+            if let Some((parent_session_id, sub_id)) = detect_agy_delegate(&identity.session_id) {
+                (Identity { client: Client::Agy, session_id: parent_session_id }, Some(sub_id), true)
+            } else {
+                (identity, delegate_id.map(str::to_owned), false)
+            }
+        } else {
+            (identity, delegate_id.map(str::to_owned), false)
+        };
+        match self.ingest_supported(event, identity, delegate_id.as_deref(), detected_delegate, payload) {
             Ok(stdout) => stdout,
             Err(_) => {
                 if let Ok(mut store) = self.coordinator.store() {
@@ -102,6 +111,7 @@ impl<'a> HookRuntime<'a> {
         event: &str,
         identity: Identity,
         delegate_id: Option<&str>,
+        detected_delegate: bool,
         payload: &Value,
     ) -> Result<String> {
         let client = identity.client;
@@ -200,7 +210,7 @@ impl<'a> HookRuntime<'a> {
                 started_at: existing.as_ref().map(|row| row.started_at),
                 current: self.coordinator.now(),
             };
-            if event == "SessionStart" {
+            if event == "SessionStart" || (client == Client::Agy && existing.is_none()) {
                 store.upsert_session_superseding(&update)?
             } else {
                 store.upsert_session(&update)?
@@ -216,13 +226,14 @@ impl<'a> HookRuntime<'a> {
 
         if let Some(agent_id) = delegate_id {
             let agent_type = payload.get("agent_type").and_then(Value::as_str);
-            store.update_delegate(
-                &identity,
-                agent_id,
-                agent_type,
-                if event == "SubagentStart" { "active" } else { "ended" },
-                self.coordinator.now(),
-            )?;
+            let delegate_state = if detected_delegate {
+                if event == "Stop" { "ended" } else { "active" }
+            } else if event == "SubagentStart" {
+                "active"
+            } else {
+                "ended"
+            };
+            store.update_delegate(&identity, agent_id, agent_type, delegate_state, self.coordinator.now())?;
         }
 
         if matches!(event, "Stop" | "SubagentStop") {
@@ -723,6 +734,40 @@ fn infer_agy_event(payload: &Value) -> Option<&'static str> {
     } else {
         None
     }
+}
+
+/// Detect if an Antigravity conversation is a subagent delegate and return
+/// `Some((parent_session_id, subagent_session_id))` if so.
+fn detect_agy_delegate(session_id: &str) -> Option<(String, String)> {
+    let home = home_dir()?;
+    let transcript = home
+        .join(".gemini")
+        .join("antigravity-cli")
+        .join("brain")
+        .join(session_id)
+        .join(".system_generated")
+        .join("logs")
+        .join("transcript.jsonl");
+
+    let file = std::fs::File::open(transcript).ok()?;
+    let mut reader = std::io::BufReader::new(file);
+    let mut first_line = String::new();
+    std::io::BufRead::read_line(&mut reader, &mut first_line).ok()?;
+    if first_line.is_empty() {
+        return None;
+    }
+    let step: Value = serde_json::from_str(&first_line).ok()?;
+    if step.get("source").and_then(Value::as_str) != Some("SYSTEM") {
+        return None;
+    }
+    let content = step.get("content").and_then(Value::as_str)?;
+    let sender_prefix = "sender=";
+    let start = content.find(sender_prefix)? + sender_prefix.len();
+    let sender = content[start..].chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '-').collect::<String>();
+    if sender.is_empty() || sender == session_id {
+        return None;
+    }
+    Some((sender, session_id.to_owned()))
 }
 
 #[cfg(test)]

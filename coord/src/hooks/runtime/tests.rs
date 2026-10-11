@@ -1944,3 +1944,129 @@ fn agy_hooks_smoke_test() {
         .unwrap();
     assert_eq!(inferred_session.state, crate::domain::SessionState::Idle);
 }
+
+#[test]
+fn agy_delegate_detection_and_parent_superseding() {
+    let temp = TempDir::new().unwrap();
+    let (coordinator, repo) = runtime(&temp);
+    let runtime = HookRuntime::new(&coordinator);
+
+    // Set up a mock transcript for subagent session pointing to parent session
+    let home = temp.path().join("mock-home");
+    let brain_dir = home.join(".gemini/antigravity-cli/brain");
+    let parent_id = "parent-agy-session";
+    let subagent_id = "subagent-agy-session";
+    let subagent_log_dir = brain_dir.join(subagent_id).join(".system_generated/logs");
+    fs::create_dir_all(&subagent_log_dir).unwrap();
+
+    let transcript_path = subagent_log_dir.join("transcript.jsonl");
+    fs::write(
+        &transcript_path,
+        format!(
+            "{{\"step_index\":0,\"source\":\"SYSTEM\",\"type\":\"SYSTEM_MESSAGE\",\"status\":\"DONE\",\"created_at\":\"2026-10-11T00:00:00Z\",\"content\":\"The following is a <SYSTEM_MESSAGE>\\n[Message] timestamp=2026-10-11T00:00:00Z sender={parent_id} priority=MESSAGE_PRIORITY_HIGH content=Perform review.\"}}\n"
+        ),
+    )
+    .unwrap();
+
+    // With HOME set to mock-home, detect_agy_delegate will recognize subagent_id
+    unsafe {
+        std::env::set_var("HOME", &home);
+    }
+
+    // 1. Ingest parent session PreInvocation
+    runtime.ingest_with_event(
+        "agy",
+        Some("PreInvocation"),
+        &json!({
+            "conversationId": parent_id,
+            "workspacePaths": [repo.to_str().unwrap()],
+            "invocationNum": 1
+        }),
+    );
+
+    let parent_identity = Identity { client: Client::Agy, session_id: parent_id.to_owned() };
+    assert!(coordinator.store().unwrap().session(&parent_identity).unwrap().is_some());
+
+    // 2. Ingest subagent PreToolUse
+    let pre_sub = runtime.ingest_with_event(
+        "agy",
+        Some("PreToolUse"),
+        &json!({
+            "conversationId": subagent_id,
+            "workspacePaths": [repo.to_str().unwrap()],
+            "toolCall": {
+                "name": "view_file"
+            },
+            "stepIdx": 1
+        }),
+    );
+    assert_eq!(pre_sub, "{\"decision\":\"allow\"}");
+
+    // The subagent should NOT have a separate top-level session row
+    let sub_identity = Identity { client: Client::Agy, session_id: subagent_id.to_owned() };
+    assert!(
+        coordinator.store().unwrap().session(&sub_identity).unwrap().is_none(),
+        "subagent is not registered as standalone session"
+    );
+
+    // The subagent should be recorded as a delegate under parent_identity
+    let delegates = coordinator.store().unwrap().delegates().unwrap();
+    assert_eq!(delegates.len(), 1);
+    assert_eq!(delegates[0].parent, parent_identity);
+    assert_eq!(delegates[0].agent_id, subagent_id);
+    assert_eq!(delegates[0].state, "active");
+
+    // 3. Ingest subagent Stop
+    runtime.ingest_with_event(
+        "agy",
+        Some("Stop"),
+        &json!({
+            "conversationId": subagent_id,
+            "workspacePaths": [repo.to_str().unwrap()],
+            "terminationReason": "model_stop",
+            "lastAssistantMessage": "done reviewing"
+        }),
+    );
+
+    // On stop, delegate is marked ended (removed from delegates table)
+    let delegates_after_stop = coordinator.store().unwrap().delegates().unwrap();
+    assert!(delegates_after_stop.is_empty(), "delegate removed when ended");
+
+    // 4. Superseding test: another session on the same process supersedes parent
+    let next_parent_id = "next-parent-agy-session";
+    let next_parent_identity = Identity { client: Client::Agy, session_id: next_parent_id.to_owned() };
+
+    // Register a delegate under parent before superseding
+    coordinator
+        .store()
+        .unwrap()
+        .update_delegate(&parent_identity, "active-sub", Some("reviewer"), "active", 100.0)
+        .unwrap();
+    assert_eq!(coordinator.store().unwrap().delegates().unwrap().len(), 1);
+
+    // Next top-level session with matching fingerprint supersedes old parent and its delegates
+    let update = SessionUpdate {
+        identity: next_parent_identity.clone(),
+        cwd: repo.to_str().unwrap().to_owned(),
+        repo_root: Some(repo.to_str().unwrap().to_owned()),
+        state: SessionState::Working,
+        source: "hook".to_owned(),
+        name: None,
+        waiting_for: None,
+        permission_mode: None,
+        update_permission_mode: false,
+        coordination_waived: None,
+        fingerprint: coordinator.store().unwrap().session(&parent_identity).unwrap().and_then(|r| r.fingerprint),
+        transcript_path: None,
+        started_at: None,
+        current: 100.0,
+    };
+    coordinator.store().unwrap().upsert_session_superseding(&update).unwrap();
+
+    assert!(coordinator.store().unwrap().session(&parent_identity).unwrap().is_none(), "old parent superseded");
+    assert!(
+        coordinator.store().unwrap().delegates().unwrap().is_empty(),
+        "delegates cascade-deleted when parent superseded"
+    );
+    assert!(coordinator.store().unwrap().session(&next_parent_identity).unwrap().is_some(), "new parent registered");
+}
