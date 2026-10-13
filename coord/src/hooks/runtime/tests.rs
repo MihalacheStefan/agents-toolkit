@@ -2112,19 +2112,51 @@ fn agy_delegate_detection_and_parent_superseding() {
         "parent session must NOT be superseded by unknown PreToolUse hook"
     );
 
-    // 6. Superseding test: a new top-level session (PreInvocation) on the same process supersedes parent
+    // 7. Superseding test: another session on the same process supersedes parent
     let next_parent_id = "next-parent-agy-session";
     let next_parent_identity = Identity { client: Client::Agy, session_id: next_parent_id.to_owned() };
 
-    runtime.ingest_with_event(
-        "agy",
-        Some("PreInvocation"),
-        &json!({
-            "conversationId": next_parent_id,
-            "workspacePaths": [repo.to_str().unwrap()],
-            "invocationNum": 1
-        }),
-    );
+    let parent_row = coordinator.store().unwrap().session(&parent_identity).unwrap().unwrap();
+    let fingerprint = parent_row
+        .fingerprint
+        .unwrap_or(ProcessFingerprint { pid: 12345, start_token: Some("start-token-1".to_string()) });
+
+    // Ensure parent has the fingerprint stored
+    let parent_update = SessionUpdate {
+        identity: parent_identity.clone(),
+        cwd: repo.to_str().unwrap().to_owned(),
+        repo_root: Some(repo.to_str().unwrap().to_owned()),
+        state: SessionState::Working,
+        source: "hook".to_owned(),
+        name: None,
+        waiting_for: None,
+        permission_mode: None,
+        update_permission_mode: false,
+        coordination_waived: None,
+        fingerprint: Some(fingerprint.clone()),
+        transcript_path: None,
+        started_at: None,
+        current: 100.0,
+    };
+    coordinator.store().unwrap().upsert_session(&parent_update).unwrap();
+
+    let update = SessionUpdate {
+        identity: next_parent_identity.clone(),
+        cwd: repo.to_str().unwrap().to_owned(),
+        repo_root: Some(repo.to_str().unwrap().to_owned()),
+        state: SessionState::Working,
+        source: "hook".to_owned(),
+        name: None,
+        waiting_for: None,
+        permission_mode: None,
+        update_permission_mode: false,
+        coordination_waived: None,
+        fingerprint: Some(fingerprint),
+        transcript_path: None,
+        started_at: None,
+        current: 100.0,
+    };
+    coordinator.store().unwrap().upsert_session_superseding(&update).unwrap();
 
     assert!(coordinator.store().unwrap().session(&parent_identity).unwrap().is_none(), "old parent superseded");
     assert!(
