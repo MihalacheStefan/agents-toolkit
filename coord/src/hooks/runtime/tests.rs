@@ -2042,7 +2042,14 @@ fn agy_delegate_detection_and_parent_superseding() {
             "id": "msg-1",
             "recipient": msg_subagent_id,
             "sender": parent_id,
-            "content": "review this"
+            "content": "review this",
+            "sourceMetadata": {
+                "tool": {
+                    "toolCall": {
+                        "name": "invoke_subagent"
+                    }
+                }
+            }
         })
         .to_string(),
     )
@@ -2066,7 +2073,26 @@ fn agy_delegate_detection_and_parent_superseding() {
     assert_eq!(delegates_msg[0].parent, parent_identity);
     assert_eq!(delegates_msg[0].agent_id, msg_subagent_id);
 
-    // 5. Test that an unknown session executing PreToolUse does NOT supersede existing parent!
+    // 5. Test that a background task notification in parent messages does NOT turn parent into a delegate!
+    let parent_msg_dir = brain_dir.join(parent_id).join(".system_generated/messages");
+    fs::create_dir_all(&parent_msg_dir).unwrap();
+    fs::write(
+        parent_msg_dir.join("task-msg.json"),
+        json!({
+            "id": "task-msg",
+            "recipient": parent_id,
+            "sender": format!("{parent_id}/task-351"),
+            "content": "Timer fired"
+        })
+        .to_string(),
+    )
+    .unwrap();
+    assert!(
+        detect_agy_delegate(parent_id).is_none(),
+        "task notification from same session must not be detected as parent delegate"
+    );
+
+    // 6. Test that an unknown session executing PreToolUse does NOT supersede existing parent!
     let unknown_tool_session_id = "unknown-tool-agy-session";
     runtime.ingest_with_event(
         "agy",

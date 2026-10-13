@@ -745,7 +745,9 @@ fn detect_agy_delegate(session_id: &str) -> Option<(String, String)> {
     let brain_dir = home.join(".gemini").join("antigravity-cli").join("brain").join(session_id);
 
     // 1. Fast path: check `.system_generated/messages/*.json` where incoming prompt message
-    // from parent contains sender and recipient.
+    // from parent contains sender, recipient, and subagent metadata.
+    // NOTE: Senders containing `/task-` are background timer/task tasks created by the same
+    // session, NOT parent agents of a subagent session!
     let messages_dir = brain_dir.join(".system_generated").join("messages");
     if let Ok(entries) = std::fs::read_dir(&messages_dir) {
         for entry in entries.flatten() {
@@ -758,9 +760,22 @@ fn detect_agy_delegate(session_id: &str) -> Option<(String, String)> {
                 let Some(sender) = msg.get("sender").and_then(Value::as_str) &&
                 !sender.is_empty() &&
                 sender != session_id &&
-                sender != "system"
+                sender != "system" &&
+                !sender.contains("/task-")
             {
-                return Some((sender.to_owned(), session_id.to_owned()));
+                let is_subagent_tool = msg
+                    .get("sourceMetadata")
+                    .and_then(|s| s.get("tool"))
+                    .and_then(|t| t.get("toolCall"))
+                    .and_then(|c| c.get("name"))
+                    .and_then(Value::as_str) ==
+                    Some("invoke_subagent");
+                let is_parent_title =
+                    msg.get("renderDetails").and_then(|r| r.get("messageTitle")).and_then(Value::as_str) ==
+                        Some("Message from Parent Agent");
+                if is_subagent_tool || is_parent_title {
+                    return Some((sender.to_owned(), session_id.to_owned()));
+                }
             }
         }
     }
@@ -783,7 +798,7 @@ fn detect_agy_delegate(session_id: &str) -> Option<(String, String)> {
     let sender_prefix = "sender=";
     let start = content.find(sender_prefix)? + sender_prefix.len();
     let sender = content[start..].chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '-').collect::<String>();
-    if sender.is_empty() || sender == session_id {
+    if sender.is_empty() || sender == session_id || sender.contains("/task-") {
         return None;
     }
     Some((sender, session_id.to_owned()))
