@@ -2092,6 +2092,33 @@ fn agy_delegate_detection_and_parent_superseding() {
         "task notification from same session must not be detected as parent delegate"
     );
 
+    // 5b. Test that a reply message from subagent to parent does NOT turn parent into a delegate of subagent!
+    fs::write(
+        parent_msg_dir.join("subagent-reply.json"),
+        json!({
+            "id": "subagent-reply",
+            "recipient": parent_id,
+            "sender": subagent_id,
+            "renderDetails": {
+                "messageTitle": "Message from Test Subagent (research)"
+            },
+            "content": "Done task",
+            "sourceMetadata": {
+                "tool": {
+                    "toolCall": {
+                        "name": "send_message"
+                    }
+                }
+            }
+        })
+        .to_string(),
+    )
+    .unwrap();
+    assert!(
+        detect_agy_delegate(parent_id).is_none(),
+        "subagent reply to parent must not detect parent as delegate of subagent"
+    );
+
     // 6. Test that an unknown session executing PreToolUse does NOT supersede existing parent!
     let unknown_tool_session_id = "unknown-tool-agy-session";
     runtime.ingest_with_event(

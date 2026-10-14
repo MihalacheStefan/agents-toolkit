@@ -256,6 +256,12 @@ impl<'a> HookRuntime<'a> {
                 "ended"
             };
             store.update_delegate(&identity, agent_id, agent_type, delegate_state, self.coordinator.now())?;
+            if detected_delegate {
+                let sub_identity = Identity { client: identity.client, session_id: agent_id.to_owned() };
+                if store.session(&sub_identity)?.is_some() {
+                    let _ = store.end_session(&sub_identity);
+                }
+            }
         }
 
         if matches!(event, "Stop" | "SubagentStop") {
@@ -760,7 +766,7 @@ fn infer_agy_event(payload: &Value) -> Option<&'static str> {
 
 /// Detect if an Antigravity conversation is a subagent delegate and return
 /// `Some((parent_session_id, subagent_session_id))` if so.
-fn detect_agy_delegate(session_id: &str) -> Option<(String, String)> {
+pub(crate) fn detect_agy_delegate(session_id: &str) -> Option<(String, String)> {
     let home = home_dir()?;
     let brain_dir = home.join(".gemini").join("antigravity-cli").join("brain").join(session_id);
 
@@ -768,6 +774,8 @@ fn detect_agy_delegate(session_id: &str) -> Option<(String, String)> {
     // from parent contains sender, recipient, and subagent metadata.
     // NOTE: Senders containing `/task-` are background timer/task tasks created by the same
     // session, NOT parent agents of a subagent session!
+    // Messages from subagents reporting back to parent via `send_message` must NOT turn
+    // the parent session into a delegate!
     let messages_dir = brain_dir.join(".system_generated").join("messages");
     if let Ok(entries) = std::fs::read_dir(&messages_dir) {
         for entry in entries.flatten() {
@@ -783,13 +791,24 @@ fn detect_agy_delegate(session_id: &str) -> Option<(String, String)> {
                 sender != "system" &&
                 !sender.contains("/task-")
             {
-                return Some((sender.to_owned(), session_id.to_owned()));
+                let is_parent_invocation =
+                    msg.get("renderDetails").and_then(|r| r.get("messageTitle")).and_then(Value::as_str) ==
+                        Some("Message from Parent Agent") ||
+                        msg.get("sourceMetadata")
+                            .and_then(|s| s.get("tool"))
+                            .and_then(|t| t.get("toolCall"))
+                            .and_then(|c| c.get("name"))
+                            .and_then(Value::as_str) ==
+                            Some("invoke_subagent");
+                if is_parent_invocation {
+                    return Some((sender.to_owned(), session_id.to_owned()));
+                }
             }
         }
     }
 
     // 2. Transcript check: inspect first few lines of transcript.jsonl or chunk 0 for SYSTEM message with
-    //    sender=<parent_id>
+    //    sender=<parent_id> at step_index 0 (initial subagent prompt only).
     let transcript = brain_dir.join(".system_generated").join("logs").join("transcript.jsonl");
     let chunk =
         brain_dir.join(".system_generated").join("logs").join("chunks").join("transcript").join("00000000.jsonl");
@@ -803,6 +822,10 @@ fn detect_agy_delegate(session_id: &str) -> Option<(String, String)> {
                 break;
             }
             if let Ok(step) = serde_json::from_str::<Value>(&line) &&
+                step.get("step_index")
+                    .and_then(Value::as_i64)
+                    .or_else(|| step.get("stepIdx").and_then(Value::as_i64)) ==
+                    Some(0) &&
                 step.get("source").and_then(Value::as_str) == Some("SYSTEM") &&
                 let Some(content) = step.get("content").and_then(Value::as_str) &&
                 let Some(start) = content.find("sender=")

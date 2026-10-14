@@ -588,7 +588,7 @@ impl Coordinator {
             sessions.iter().map(|row| (row.identity.clone(), row.fingerprint.clone())),
         );
         let revisions = sessions.iter().map(|row| (row.identity.clone(), row.revision)).collect::<HashMap<_, _>>();
-        let dead = observations
+        let mut dead = observations
             .iter()
             .filter(|observation| observation.liveness == ProcessLiveness::Dead)
             .map(|observation| EndedObservation {
@@ -597,6 +597,24 @@ impl Coordinator {
                 expected_revision: revisions[&observation.identity],
             })
             .collect::<Vec<_>>();
+
+        // Subagents accidentally registered as standalone sessions with no active work claims
+        // must be reaped so they do not linger on the dashboard.
+        for session in &sessions {
+            if session.identity.client == Client::Agy &&
+                !dead.iter().any(|d| d.identity == session.identity) &&
+                crate::hooks::runtime::detect_agy_delegate(&session.identity.session_id).is_some()
+            {
+                let has_active_work = store.work(&session.identity)?.is_some_and(|w| w.state == WorkState::Active);
+                if !has_active_work {
+                    dead.push(EndedObservation {
+                        identity: session.identity.clone(),
+                        expected_fingerprint: session.fingerprint.clone(),
+                        expected_revision: session.revision,
+                    });
+                }
+            }
+        }
         store.with_work_transaction(|transaction| {
             let released_work = dead
                 .iter()
