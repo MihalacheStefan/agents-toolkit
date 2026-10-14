@@ -14,8 +14,18 @@ function sessionKey(client: string, sessionId: string): string {
   return `${client}:${sessionId}`;
 }
 
-function sessionRepo(session: Session): string {
-  return session.repo_root ?? session.cwd;
+function sessionRepo(
+  session: Session,
+  workBySessionKey?: Map<string, WorkWithQueuePosition | Work>,
+): string {
+  if (session.repo_root) {
+    return session.repo_root;
+  }
+  const item = workBySessionKey?.get(sessionKey(session.client, session.session_id));
+  if (item && item.claims.length > 0) {
+    return sortedFirstRoot(item.claims.map((claim) => claim.repo_root));
+  }
+  return session.cwd;
 }
 
 function sortedFirstRoot(repoRoots: string[]): string {
@@ -27,11 +37,12 @@ function sortedFirstRoot(repoRoots: string[]): string {
 function draftHome(
   draft: SnapshotDraft,
   sessionsByKey: Map<string, Session>,
+  resolveRepo: (session: Session) => string = sessionRepo,
 ): string {
   const ownerSession = draft.owner
     ? sessionsByKey.get(sessionKey(draft.owner.client, draft.owner.session_id))
     : undefined;
-  const ownerRoot = ownerSession ? sessionRepo(ownerSession) : undefined;
+  const ownerRoot = ownerSession ? resolveRepo(ownerSession) : undefined;
   return ownerRoot &&
     draft.claims.some((claim) => claim.repo_root === ownerRoot)
     ? ownerRoot
@@ -107,6 +118,11 @@ function groupDelegates(delegates: Delegate[]): Map<string, Delegate[]> {
 export function groupSnapshotByRepo(snapshot: Snapshot): RepoLaneModel[] {
   const roots = new Set<string>();
   const work = withQueuePositions(snapshot.work);
+  const workBySessionKey = new Map(
+    work.map((item) => [sessionKey(item.client, item.session_id), item]),
+  );
+  const resolveSessionRepo = (session: Session) =>
+    sessionRepo(session, workBySessionKey);
   const sessionsByKey = new Map(
     snapshot.sessions.map((session) => [
       sessionKey(session.client, session.session_id),
@@ -116,7 +132,7 @@ export function groupSnapshotByRepo(snapshot: Snapshot): RepoLaneModel[] {
   const workHome = new Map(
     work.map((item) => {
       const session = sessionsByKey.get(sessionKey(item.client, item.session_id));
-      const sessionRoot = session ? sessionRepo(session) : undefined;
+      const sessionRoot = session ? resolveSessionRepo(session) : undefined;
       const home =
         sessionRoot && item.claims.some((claim) => claim.repo_root === sessionRoot)
           ? sessionRoot
@@ -125,20 +141,23 @@ export function groupSnapshotByRepo(snapshot: Snapshot): RepoLaneModel[] {
     }),
   );
   const draftHomeById = new Map(
-    snapshot.drafts.map((draft) => [draft.id, draftHome(draft, sessionsByKey)]),
+    snapshot.drafts.map((draft) => [
+      draft.id,
+      draftHome(draft, sessionsByKey, resolveSessionRepo),
+    ]),
   );
   const workBySession = new Map(
     work.flatMap((item) => {
       const home = workHome.get(item.id)!;
       const session = sessionsByKey.get(sessionKey(item.client, item.session_id));
-      return session && sessionRepo(session) === home
+      return session && resolveSessionRepo(session) === home
         ? [[sessionKey(item.client, item.session_id), item] as const]
         : [];
     }),
   );
   const delegatesBySession = groupDelegates(snapshot.delegates);
 
-  snapshot.sessions.forEach((session) => roots.add(sessionRepo(session)));
+  snapshot.sessions.forEach((session) => roots.add(resolveSessionRepo(session)));
   work.forEach((item) => item.claims.forEach((claim) => roots.add(claim.repo_root)));
   snapshot.drafts.forEach((draft) =>
     draft.claims.forEach((claim) => roots.add(claim.repo_root)),
@@ -149,7 +168,7 @@ export function groupSnapshotByRepo(snapshot: Snapshot): RepoLaneModel[] {
   return [...roots]
     .map((repoRoot): RepoLaneModel => {
       const sessions = snapshot.sessions
-        .filter((session) => sessionRepo(session) === repoRoot)
+        .filter((session) => resolveSessionRepo(session) === repoRoot)
         .sort(
           (left, right) =>
             right.last_seen - left.last_seen ||
@@ -159,9 +178,9 @@ export function groupSnapshotByRepo(snapshot: Snapshot): RepoLaneModel[] {
           const key = sessionKey(session.client, session.session_id);
           return {
             session,
-            work: workBySession.get(sessionKey(session.client, session.session_id)),
+            work: workBySession.get(key),
             delegates:
-              sessionRepo(session) === repoRoot
+              resolveSessionRepo(session) === repoRoot
                 ? (delegatesBySession.get(key) ?? [])
                 : [],
           };

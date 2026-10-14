@@ -2151,7 +2151,7 @@ fn agy_delegate_detection_and_parent_superseding() {
         permission_mode: None,
         update_permission_mode: false,
         coordination_waived: None,
-        fingerprint: Some(fingerprint),
+        fingerprint: Some(fingerprint.clone()),
         transcript_path: None,
         started_at: None,
         current: 100.0,

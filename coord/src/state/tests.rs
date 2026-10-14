@@ -655,6 +655,32 @@ fn new_identity_on_the_same_strong_client_process_supersedes_stale_top_level_sta
 }
 
 #[test]
+fn active_claim_or_delegate_on_process_detection() {
+    let temporary = tempdir().unwrap();
+    let mut store = Store::open(temporary.path().join("state.db")).unwrap();
+    let parent = identity(Client::Agy, "parent");
+    let other = identity(Client::Agy, "other");
+    let mut session = session_update(&parent, 1.0);
+    session.fingerprint = Some(ProcessFingerprint { pid: 42, start_token: Some("boot:42".to_owned()) });
+    store.upsert_session(&session).unwrap();
+
+    // Idle session with no work or delegates -> false
+    assert!(!store.has_active_claim_or_delegate_on_process(Client::Agy, &other.session_id, 42, "boot:42").unwrap());
+
+    // When parent has active work -> true
+    save_work(&mut store, &work_update(&parent)).unwrap();
+    assert!(store.has_active_claim_or_delegate_on_process(Client::Agy, &other.session_id, 42, "boot:42").unwrap());
+
+    // When parent has active delegate -> true
+    let delegate_parent = identity(Client::Agy, "del-parent");
+    let mut del_session = session_update(&delegate_parent, 1.0);
+    del_session.fingerprint = Some(ProcessFingerprint { pid: 43, start_token: Some("boot:43".to_owned()) });
+    store.upsert_session(&del_session).unwrap();
+    store.update_delegate(&delegate_parent, "child", Some("explorer"), "active", 1.0).unwrap();
+    assert!(store.has_active_claim_or_delegate_on_process(Client::Agy, &other.session_id, 43, "boot:43").unwrap());
+}
+
+#[test]
 fn pruning_expires_messages_but_never_findings_or_sessions() {
     let temporary = tempdir().unwrap();
     let mut store = Store::open(temporary.path().join("state.db")).unwrap();

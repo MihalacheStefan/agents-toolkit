@@ -126,4 +126,58 @@ describe("groupSnapshotByRepo", () => {
     expect(sampleSnapshot.findings.length + sampleSnapshot.messages.length).toBeGreaterThan(0);
     expect(lanes).toEqual([]);
   });
+
+  test("homes a session with null repo_root in its work claim repository", () => {
+    const parentDir = "/Users/stefanmihalache/projects";
+    const snapshotWithNullRepo = {
+      ...sampleSnapshot,
+      sessions: [
+        {
+          client: "agy" as const,
+          session_id: "agy-null-repo-1",
+          cwd: parentDir,
+          repo_root: null,
+          state: "working" as const,
+          callsign: "🦅 Falcon",
+          name: "test-task",
+          waiting_for: null,
+          permission_mode: null,
+          coordination_waived: false,
+          pid: 9999,
+          source: "hook",
+          started_at: 1_785_832_480,
+          last_seen: 1_785_833_725,
+        },
+      ],
+      work: [
+        {
+          id: 999,
+          client: "agy" as const,
+          session_id: "agy-null-repo-1",
+          label: "test-work",
+          state: "active" as const,
+          scope_count: 1,
+          submitted_at: 1_785_832_480,
+          updated_at: 1_785_832_480,
+          claims: [
+            {
+              repo_root: toolkitRoot,
+              scope_count: 1,
+              scopes: [{ path: "coord/src/hooks/runtime.rs", kind: "exact" as const }],
+            },
+          ],
+        },
+      ],
+      drafts: [],
+      handoffs: [],
+    };
+
+    const lanes = groupSnapshotByRepo(snapshotWithNullRepo);
+    expect(lanes).toHaveLength(1);
+    expect(lanes[0]?.repoRoot).toBe(toolkitRoot);
+    expect(lanes[0]?.sessions).toHaveLength(1);
+    expect(lanes[0]?.sessions[0]?.session.session_id).toBe("agy-null-repo-1");
+    expect(lanes[0]?.sessions[0]?.work?.label).toBe("test-work");
+    expect(lanes[0]?.unmatchedWork).toEqual([]);
+  });
 });

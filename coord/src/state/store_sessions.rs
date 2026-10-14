@@ -37,6 +37,7 @@ impl Store {
                  ) VALUES (?1, ?2, ?3, ?4, 'working', ?5, ?6, 'hook', ?7, ?7, 1)
                  ON CONFLICT(client, session_id) DO UPDATE SET
                     state = 'working',
+                    repo_root = COALESCE(sessions.repo_root, excluded.repo_root),
                     pid = COALESCE(sessions.pid, excluded.pid),
                     process_start_token = CASE WHEN sessions.pid IS NULL THEN excluded.process_start_token
                                                ELSE sessions.process_start_token END,
@@ -86,6 +87,34 @@ impl Store {
             }
             Ok(row)
         })
+    }
+
+    /// Check if another session on the same process holds active work claims or active delegates.
+    pub(crate) fn has_active_claim_or_delegate_on_process(
+        &self,
+        client: crate::domain::Client,
+        session_id: &str,
+        pid: u32,
+        start_token: &str,
+    ) -> Result<bool> {
+        let mut statement = self.connection.prepare(
+            "SELECT 1 FROM sessions s
+             WHERE s.client = ?1 AND s.session_id != ?2 AND s.pid = ?3
+               AND s.process_start_token = ?4
+               AND (
+                   EXISTS (
+                       SELECT 1 FROM work_items w
+                       WHERE w.client = s.client AND w.session_id = s.session_id AND w.state = 'active'
+                   )
+                   OR EXISTS (
+                       SELECT 1 FROM delegates d
+                       WHERE d.parent_client = s.client AND d.parent_session_id = s.session_id AND d.state = 'active'
+                   )
+               )
+             LIMIT 1",
+        )?;
+        let exists = statement.exists(params![client_name(client), session_id, pid, start_token])?;
+        Ok(exists)
     }
 
     /// Replace Claude rows only after a complete, authoritative provider

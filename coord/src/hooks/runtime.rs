@@ -159,6 +159,15 @@ impl<'a> HookRuntime<'a> {
         }
         let cwd = hook_cwd(payload)?;
         let root = git_root(&cwd);
+        let repo_root = if let Some(path) = root.as_ref() {
+            Some(path_text(path)?)
+        } else if let Some(existing_root) = existing.as_ref().and_then(|row| row.repo_root.clone()) {
+            Some(existing_root)
+        } else if let Ok(Some(work)) = store.work(&identity) {
+            work.claims.into_iter().next().map(|claim| claim.repo_root)
+        } else {
+            None
+        };
         let prompt_waiver = if event == "UserPromptSubmit" {
             payload.get("prompt").and_then(Value::as_str).map(prompt_waives_coordination)
         } else {
@@ -174,7 +183,7 @@ impl<'a> HookRuntime<'a> {
             store.observe_delegate_parent(
                 &identity,
                 &path_text(&cwd)?,
-                root.as_ref().map(|path| path_text(path)).transpose()?.as_deref(),
+                repo_root.as_deref(),
                 fingerprint.as_ref(),
                 self.coordinator.now(),
             )?
@@ -187,7 +196,7 @@ impl<'a> HookRuntime<'a> {
             let update = SessionUpdate {
                 identity: identity.clone(),
                 cwd: path_text(&cwd)?,
-                repo_root: root.as_ref().map(|path| path_text(path)).transpose()?,
+                repo_root: repo_root.clone(),
                 state: if matches!(event, "SessionStart" | "Stop") {
                     SessionState::Idle
                 } else {
@@ -212,11 +221,22 @@ impl<'a> HookRuntime<'a> {
             };
             let is_agy_top_level_start =
                 client == Client::Agy && existing.is_none() && matches!(event, "PreInvocation" | "UserPromptSubmit");
-            if event == "SessionStart" || is_agy_top_level_start {
-                store.upsert_session_superseding(&update)?
+            let is_superseding = if is_agy_top_level_start {
+                if let Some(fp) = update.fingerprint.as_ref().filter(|f| f.start_token.is_some()) {
+                    let has_active = store.has_active_claim_or_delegate_on_process(
+                        client,
+                        &identity.session_id,
+                        fp.pid,
+                        fp.start_token.as_deref().unwrap_or_default(),
+                    )?;
+                    !has_active
+                } else {
+                    true
+                }
             } else {
-                store.upsert_session(&update)?
-            }
+                event == "SessionStart"
+            };
+            if is_superseding { store.upsert_session_superseding(&update)? } else { store.upsert_session(&update)? }
         };
         if session.callsign.is_none() {
             assign_auto_callsign(&mut store, &identity);
@@ -763,45 +783,42 @@ fn detect_agy_delegate(session_id: &str) -> Option<(String, String)> {
                 sender != "system" &&
                 !sender.contains("/task-")
             {
-                let is_subagent_tool = msg
-                    .get("sourceMetadata")
-                    .and_then(|s| s.get("tool"))
-                    .and_then(|t| t.get("toolCall"))
-                    .and_then(|c| c.get("name"))
-                    .and_then(Value::as_str) ==
-                    Some("invoke_subagent");
-                let is_parent_title =
-                    msg.get("renderDetails").and_then(|r| r.get("messageTitle")).and_then(Value::as_str) ==
-                        Some("Message from Parent Agent");
-                if is_subagent_tool || is_parent_title {
-                    return Some((sender.to_owned(), session_id.to_owned()));
+                return Some((sender.to_owned(), session_id.to_owned()));
+            }
+        }
+    }
+
+    // 2. Transcript check: inspect first few lines of transcript.jsonl or chunk 0 for SYSTEM message with
+    //    sender=<parent_id>
+    let transcript = brain_dir.join(".system_generated").join("logs").join("transcript.jsonl");
+    let chunk =
+        brain_dir.join(".system_generated").join("logs").join("chunks").join("transcript").join("00000000.jsonl");
+    let candidate = if transcript.exists() { transcript } else { chunk };
+    if let Ok(file) = std::fs::File::open(candidate) {
+        let mut reader = std::io::BufReader::new(file);
+        let mut line = String::new();
+        for _ in 0..5 {
+            line.clear();
+            if std::io::BufRead::read_line(&mut reader, &mut line).is_err() || line.is_empty() {
+                break;
+            }
+            if let Ok(step) = serde_json::from_str::<Value>(&line) &&
+                step.get("source").and_then(Value::as_str) == Some("SYSTEM") &&
+                let Some(content) = step.get("content").and_then(Value::as_str) &&
+                let Some(start) = content.find("sender=")
+            {
+                let sender = content[start + 7..]
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '-')
+                    .collect::<String>();
+                if !sender.is_empty() && sender != session_id && !sender.contains("/task-") {
+                    return Some((sender, session_id.to_owned()));
                 }
             }
         }
     }
 
-    // 2. Transcript check: step 0 has SYSTEM message with sender=<parent_id>
-    let transcript = brain_dir.join(".system_generated").join("logs").join("transcript.jsonl");
-
-    let file = std::fs::File::open(transcript).ok()?;
-    let mut reader = std::io::BufReader::new(file);
-    let mut first_line = String::new();
-    std::io::BufRead::read_line(&mut reader, &mut first_line).ok()?;
-    if first_line.is_empty() {
-        return None;
-    }
-    let step: Value = serde_json::from_str(&first_line).ok()?;
-    if step.get("source").and_then(Value::as_str) != Some("SYSTEM") {
-        return None;
-    }
-    let content = step.get("content").and_then(Value::as_str)?;
-    let sender_prefix = "sender=";
-    let start = content.find(sender_prefix)? + sender_prefix.len();
-    let sender = content[start..].chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '-').collect::<String>();
-    if sender.is_empty() || sender == session_id || sender.contains("/task-") {
-        return None;
-    }
-    Some((sender, session_id.to_owned()))
+    None
 }
 
 #[cfg(test)]

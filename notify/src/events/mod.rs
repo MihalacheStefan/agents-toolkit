@@ -6,7 +6,7 @@
 
 use std::{
     env,
-    path::{Component, Path},
+    path::{Component, Path, PathBuf},
 };
 
 use chrono::DateTime;
@@ -369,6 +369,11 @@ pub fn handle_agy_hook(
     }
 
     // Stop event
+    let transcript_path = string(object, "transcriptPath");
+    if is_agy_subagent(session_id, (!transcript_path.is_empty()).then_some(transcript_path)) {
+        return Ok(());
+    }
+
     let error_msg = string(object, "error");
     let term_reason = string(object, "terminationReason");
     let is_error = (!error_msg.is_empty()) || term_reason.eq_ignore_ascii_case("error");
@@ -377,7 +382,6 @@ pub fn handle_agy_hook(
     let mut last_assistant_message = string(object, "last_assistant_message").to_owned();
     let mut duration_secs = state.job_info(session_id).duration_seconds.and_then(|v| u64::try_from(v).ok());
 
-    let transcript_path = string(object, "transcriptPath");
     if !transcript_path.is_empty() {
         let (extracted_prompt, extracted_msg, extracted_duration) = read_agy_transcript(Path::new(transcript_path));
         if prompt.is_none() {
@@ -437,6 +441,68 @@ pub fn handle_agy_hook(
 
     state.cleanup_if_due();
     Ok(())
+}
+
+fn is_agy_subagent(session_id: &str, transcript_path: Option<&str>) -> bool {
+    let Some(home) = env::var_os("HOME").filter(|path| !path.is_empty()).map(PathBuf::from) else {
+        return false;
+    };
+    let brain_dir = home.join(".gemini").join("antigravity-cli").join("brain").join(session_id);
+
+    // 1. Check .system_generated/messages/*.json for incoming message from a parent
+    let messages_dir = brain_dir.join(".system_generated").join("messages");
+    if let Ok(entries) = std::fs::read_dir(&messages_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.file_name().and_then(|n| n.to_str()) != Some("read.json") &&
+                path.extension().and_then(|e| e.to_str()) == Some("json") &&
+                let Ok(file) = std::fs::File::open(&path) &&
+                let Ok(msg) = serde_json::from_reader::<_, Value>(file) &&
+                msg.get("recipient").and_then(Value::as_str) == Some(session_id) &&
+                let Some(sender) = msg.get("sender").and_then(Value::as_str) &&
+                !sender.is_empty() &&
+                sender != session_id &&
+                sender != "system" &&
+                !sender.contains("/task-")
+            {
+                return true;
+            }
+        }
+    }
+
+    // 2. Transcript check: inspect first few lines for SYSTEM message with sender=<parent_id>
+    let candidates = [
+        transcript_path.map(PathBuf::from),
+        Some(brain_dir.join(".system_generated").join("logs").join("transcript.jsonl")),
+        Some(brain_dir.join(".system_generated").join("logs").join("chunks").join("transcript").join("00000000.jsonl")),
+    ];
+    for candidate in candidates.into_iter().flatten() {
+        if let Ok(file) = std::fs::File::open(candidate) {
+            let mut reader = std::io::BufReader::new(file);
+            let mut line = String::new();
+            for _ in 0..5 {
+                line.clear();
+                if std::io::BufRead::read_line(&mut reader, &mut line).is_err() || line.is_empty() {
+                    break;
+                }
+                if let Ok(step) = serde_json::from_str::<Value>(&line) &&
+                    step.get("source").and_then(Value::as_str) == Some("SYSTEM") &&
+                    let Some(content) = step.get("content").and_then(Value::as_str) &&
+                    let Some(start) = content.find("sender=")
+                {
+                    let sender = content[start + 7..]
+                        .chars()
+                        .take_while(|c| c.is_ascii_alphanumeric() || *c == '-')
+                        .collect::<String>();
+                    if !sender.is_empty() && sender != session_id && !sender.contains("/task-") {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+
+    false
 }
 
 fn read_agy_transcript(transcript_path: &Path) -> (Option<String>, Option<String>, Option<u64>) {
@@ -1044,5 +1110,53 @@ mod tests {
         assert_eq!(notification.client, Client::Agy);
         assert_eq!(notification.subtitle, "Antigravity completed in 15s");
         assert_eq!(notification.message, "Task: Do the task\nResult: All done successfully.");
+    }
+
+    #[test]
+    fn agy_stop_suppresses_subagent_completion() {
+        let directory = tempfile::tempdir().unwrap();
+        let transcript = directory.path().join("transcript.jsonl");
+        let lines = [
+            json!({
+                "step_index": 0,
+                "source": "SYSTEM",
+                "type": "SYSTEM_MESSAGE",
+                "status": "DONE",
+                "created_at": "2026-10-14T06:53:06Z",
+                "content": "<SYSTEM_MESSAGE>\n[Message] timestamp=2026-10-14T06:53:06Z sender=parent-session-123 priority=MESSAGE_PRIORITY_HIGH content=subagent prompt\n</SYSTEM_MESSAGE>"
+            })
+            .to_string(),
+            json!({
+                "step_index": 1,
+                "type": "USER_INPUT",
+                "content": "<USER_REQUEST>\nsubagent prompt\n</USER_REQUEST>",
+                "created_at": "2026-10-14T06:53:06Z"
+            })
+            .to_string(),
+            json!({
+                "step_index": 2,
+                "type": "PLANNER_RESPONSE",
+                "status": "DONE",
+                "content": "subagent done",
+                "created_at": "2026-10-14T06:53:20Z"
+            })
+            .to_string(),
+        ];
+        std::fs::write(&transcript, lines.join("\n")).unwrap();
+
+        let state = State::default();
+        let mut sink = Sink::default();
+        let payload = json!({
+            "conversationId": "subagent-session-456",
+            "workspacePaths": [directory.path().to_str().unwrap()],
+            "transcriptPath": transcript.to_str().unwrap(),
+            "terminationReason": "NO_TOOL_CALL"
+        });
+        let mut cfg = config();
+        cfg.notification.threshold_seconds = 1;
+        handle_agy_hook(&payload, &state, &cfg, &mut sink).unwrap();
+
+        // MUST be suppressed!
+        assert!(sink.0.borrow().is_empty(), "subagent completion must NOT notify the user");
     }
 }
